@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(brew install:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init -p)",
+      "Bash(./node_modules/.bin/tailwindcss:*)",
+      "Bash(npx --yes tailwindcss init -p)",
+      "Bash(npm run dev:*)",
+      "Bash(npx tsc:*)",
+      "Bash(gh auth:*)",
+      "Bash(git push:*)",
+      "Bash(vercel --prod --yes:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
