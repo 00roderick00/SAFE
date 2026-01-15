@@ -17,6 +17,7 @@ interface PlayerStore extends PlayerState {
   addSecurityModule: (module: SecurityModule) => void;
   removeSecurityModule: (index: number) => void;
   setModuleDifficulty: (index: number, difficulty: number) => void;
+  setModuleType: (index: number, type: ModuleType) => void;
   purchaseInsurance: (policy: InsurancePolicy) => void;
   useInsuranceClaim: () => void;
   clearInsurance: () => void;
@@ -138,6 +139,27 @@ export const usePlayerStore = create<PlayerStore>()(
         set((state) => {
           const newModules = [...state.securityLoadout.modules];
           newModules[index] = { ...newModules[index], difficulty };
+          const newLoadout = {
+            modules: newModules,
+            effectiveScore: calculateSecurityScore({ modules: newModules, effectiveScore: 0 }),
+          };
+          return { securityLoadout: newLoadout };
+        }),
+
+      setModuleType: (index, type) =>
+        set((state) => {
+          const config = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG];
+          if (!config) return state;
+
+          const newModules = [...state.securityLoadout.modules];
+          const existingModule = newModules[index];
+          newModules[index] = {
+            ...existingModule,
+            type,
+            name: config.name,
+            description: config.description,
+            weight: config.baseWeight,
+          };
           const newLoadout = {
             modules: newModules,
             effectiveScore: calculateSecurityScore({ modules: newModules, effectiveScore: 0 }),

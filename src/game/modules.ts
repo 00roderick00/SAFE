@@ -278,17 +278,60 @@ export function getModuleInfo(type: SecurityModule['type']): {
   name: string;
   description: string;
   icon: string;
+  category: string;
 } {
-  const config = MODULE_CONFIG[type];
-  const icons = {
-    pattern: 'grid-3x3',
-    keypad: 'keyboard',
-    timing: 'clock',
-  };
+  const config = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG];
+  if (!config) {
+    return {
+      name: 'Custom Game',
+      description: 'A custom security challenge',
+      icon: '🎮',
+      category: 'custom',
+    };
+  }
 
   return {
     name: config.name,
     description: config.description,
-    icon: icons[type],
+    icon: config.icon,
+    category: config.category,
   };
+}
+
+/**
+ * Get all available module types grouped by category
+ */
+export function getModulesByCategory(): Record<string, { type: string; name: string; icon: string; description: string }[]> {
+  const categories: Record<string, { type: string; name: string; icon: string; description: string }[]> = {
+    classic: [],
+    arcade: [],
+    puzzle: [],
+  };
+
+  Object.entries(MODULE_CONFIG).forEach(([type, config]) => {
+    const category = config.category as keyof typeof categories;
+    if (categories[category]) {
+      categories[category].push({
+        type,
+        name: config.name,
+        icon: config.icon,
+        description: config.description,
+      });
+    }
+  });
+
+  return categories;
+}
+
+/**
+ * Get all module types as a flat list
+ */
+export function getAllModuleTypes(): { type: string; name: string; icon: string; description: string; category: string }[] {
+  return Object.entries(MODULE_CONFIG).map(([type, config]) => ({
+    type,
+    name: config.name,
+    icon: config.icon,
+    description: config.description,
+    category: config.category,
+  }));
 }

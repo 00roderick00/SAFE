@@ -4,6 +4,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, ChevronRight, Coins, ArrowLeft } from 'lucide-react';
 import { Card, Button, ProgressBar } from '../components/ui';
 import { PatternLock, Keypad, TimingLock } from '../components/minigames';
+// Arcade games
+import { PacmanGame } from '../components/minigames/PacmanGame';
+import { SpaceInvaders } from '../components/minigames/SpaceInvaders';
+import { FroggerGame } from '../components/minigames/FroggerGame';
+import { DonkeyKong } from '../components/minigames/DonkeyKong';
+import { CentipedeGame } from '../components/minigames/CentipedeGame';
+import { AsteroidsGame } from '../components/minigames/AsteroidsGame';
+// Puzzle games
+import { QuickMath } from '../components/minigames/QuickMath';
+import { WordScramble } from '../components/minigames/WordScramble';
+import { MemoryMatch } from '../components/minigames/MemoryMatch';
+
 import { usePlayerStore } from '../store/playerStore';
 import { useHeistStore } from '../store/heistStore';
 import { useGameStore } from '../store/gameStore';
@@ -210,6 +222,7 @@ export const AttackScreen = () => {
               exit={{ opacity: 0, y: -20 }}
               className="w-full max-w-sm"
             >
+              {/* Classic Locks */}
               {currentModule.type === 'pattern' && (
                 <PatternLock
                   config={config as PatternLockConfig}
@@ -225,6 +238,64 @@ export const AttackScreen = () => {
               {currentModule.type === 'timing' && (
                 <TimingLock
                   config={config as TimingLockConfig}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+
+              {/* Arcade Games */}
+              {currentModule.type === 'pacman' && (
+                <PacmanGame
+                  difficulty={currentModule.difficulty}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+              {currentModule.type === 'spaceinvaders' && (
+                <SpaceInvaders
+                  difficulty={currentModule.difficulty}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+              {currentModule.type === 'frogger' && (
+                <FroggerGame
+                  difficulty={currentModule.difficulty}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+              {currentModule.type === 'donkeykong' && (
+                <DonkeyKong
+                  difficulty={currentModule.difficulty}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+              {currentModule.type === 'centipede' && (
+                <CentipedeGame
+                  difficulty={currentModule.difficulty}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+              {currentModule.type === 'asteroids' && (
+                <AsteroidsGame
+                  difficulty={currentModule.difficulty}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+
+              {/* Puzzle Games */}
+              {currentModule.type === 'quickmath' && (
+                <QuickMath
+                  difficulty={currentModule.difficulty}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+              {currentModule.type === 'wordscramble' && (
+                <WordScramble
+                  difficulty={currentModule.difficulty}
+                  onComplete={handleModuleComplete}
+                />
+              )}
+              {currentModule.type === 'memorymatch' && (
+                <MemoryMatch
+                  difficulty={currentModule.difficulty}
                   onComplete={handleModuleComplete}
                 />
               )}

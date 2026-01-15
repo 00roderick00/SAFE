@@ -1,6 +1,19 @@
 // Core game types for SAFE
 
-export type ModuleType = 'pattern' | 'keypad' | 'timing';
+export type ModuleType =
+  | 'pattern'
+  | 'keypad'
+  | 'timing'
+  | 'pacman'
+  | 'spaceinvaders'
+  | 'frogger'
+  | 'donkeykong'
+  | 'centipede'
+  | 'asteroids'
+  | 'quickmath'
+  | 'wordscramble'
+  | 'memorymatch'
+  | 'custom';
 
 export interface SecurityModule {
   id: string;
@@ -114,10 +127,27 @@ export type MiniGameConfig = PatternLockConfig | KeypadConfig | TimingLockConfig
 
 export interface MiniGameResult {
   moduleId: string;
-  moduleType: ModuleType;
+  moduleType: ModuleType | string; // string allows custom game types
   score: number; // 0-1
   passed: boolean;
   timeSpent: number; // ms
+}
+
+// Custom game suggestion from user
+export interface CustomGameSuggestion {
+  id: string;
+  name: string;
+  description: string;
+  mechanics: string; // user description of how it works
+  suggestedAt: number;
+  aiRating: {
+    difficulty: number; // 0-1
+    feasibility: number; // 0-1 how likely AI can build it
+    estimatedTime: string; // e.g., "15 seconds"
+    feedback: string; // AI's analysis
+  } | null;
+  status: 'pending' | 'rated' | 'approved' | 'built' | 'rejected';
+  builtGameCode?: string; // generated code if built
 }
 
 // Insurance plan options

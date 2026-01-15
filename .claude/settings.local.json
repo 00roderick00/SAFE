@@ -20,7 +20,9 @@
       "Bash(vercel build:*)",
       "Bash(npx netlify-cli:*)",
       "Bash(npx surge:*)",
-      "Bash(npx gh-pages:*)"
+      "Bash(npx gh-pages:*)",
+      "Bash(gh api:*)",
+      "Bash(gh repo edit:*)"
     ]
   }
 }
