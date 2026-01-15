@@ -14,7 +14,13 @@
       "Bash(vercel --prod --yes:*)",
       "Bash(npm run build:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(vercel deploy:*)",
+      "Bash(vercel --prod --force --yes:*)",
+      "Bash(vercel build:*)",
+      "Bash(npx netlify-cli:*)",
+      "Bash(npx surge:*)",
+      "Bash(npx gh-pages:*)"
     ]
   }
 }
