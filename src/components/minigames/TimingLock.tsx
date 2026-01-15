@@ -15,7 +15,7 @@ export const TimingLock = ({ config, onComplete }: TimingLockProps) => {
   const [lastHit, setLastHit] = useState<number | null>(null);
   const [result, setResult] = useState<'success' | 'fail' | null>(null);
   const startTime = useRef(Date.now());
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | null>(null);
 
   const { rotationSpeed, targetZoneSize, attemptsAllowed, targetPosition } = config;
   const halfZone = targetZoneSize / 2;
