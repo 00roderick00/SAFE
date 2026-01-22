@@ -3,18 +3,20 @@
 
 export const ECONOMY = {
   // Loot and fees
-  lootFraction: 0.25, // ℓ - max 25% loss per breach
-  lootCap: 10000, // Maximum tokens that can be looted in one heist
-  platformCut: 0.10, // t - 10% of loot goes to platform
+  // Increased loot to reward successful all-or-nothing heists
+  lootFraction: 0.30, // ℓ - max 30% loss per breach (was 25%)
+  lootCap: 15000, // Maximum tokens that can be looted in one heist (was 10000)
+  platformCut: 0.08, // t - 8% of loot goes to platform (was 10%)
   platformCutFail: 0.00, // t_fail - 0% of failed fees (keep low for encouragement)
 
   // Fee calculation: F = sqrt(V) * (a + b/(1+S))
+  // Reduced fees to compensate for all-or-nothing lock system
   feeParams: {
-    a: 0.8, // baseline fee multiplier
-    b: 1.6, // ease bonus multiplier
+    a: 0.5, // baseline fee multiplier (was 0.8)
+    b: 1.0, // ease bonus multiplier (was 1.6)
   },
-  feeMin: 10, // minimum attack stake
-  feeMax: 5000, // maximum attack stake
+  feeMin: 5, // minimum attack stake (was 10)
+  feeMax: 3000, // maximum attack stake (was 5000)
   feeMaxPercentOfBalance: 0.5, // can't stake more than 50% of balance
 
   // Heist mode
@@ -62,12 +64,15 @@ export const ECONOMY = {
   startingRiskRating: 1000, // MMR starting point
 } as const;
 
-// Security module configuration
+// Security module configuration - 36 total (12 classic, 12 arcade, 12 puzzle)
 export const MODULE_CONFIG = {
+  // ============================================
+  // CLASSIC LOCKS (12)
+  // ============================================
   pattern: {
     name: 'Pattern Lock',
-    description: 'Draw the correct pattern to unlock',
-    icon: 'grid-3x3',
+    description: 'Draw the correct pattern',
+    icon: '🔲',
     category: 'classic',
     baseWeight: 1.0,
     hardnessConstant: 2.5,
@@ -83,9 +88,9 @@ export const MODULE_CONFIG = {
     },
   },
   keypad: {
-    name: 'Keypad Code',
-    description: 'Memorize and enter the code sequence',
-    icon: 'keyboard',
+    name: 'Keypad',
+    description: 'Enter the code sequence',
+    icon: '🔢',
     category: 'classic',
     baseWeight: 1.0,
     hardnessConstant: 2.2,
@@ -102,8 +107,8 @@ export const MODULE_CONFIG = {
   },
   timing: {
     name: 'Timing Lock',
-    description: 'Stop the dial in the target zone',
-    icon: 'clock',
+    description: 'Stop in the target zone',
+    icon: '⏱️',
     category: 'classic',
     baseWeight: 1.0,
     hardnessConstant: 2.0,
@@ -118,10 +123,103 @@ export const MODULE_CONFIG = {
       attemptsRange: [3, 1],
     },
   },
-  // Arcade Games
+  combination: {
+    name: 'Combo Dial',
+    description: 'Spin left-right-left',
+    icon: '🎯',
+    category: 'classic',
+    baseWeight: 1.1,
+    hardnessConstant: 2.3,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  sequence: {
+    name: 'Sequence',
+    description: 'Remember the order',
+    icon: '📊',
+    category: 'classic',
+    baseWeight: 1.0,
+    hardnessConstant: 2.2,
+    duration: 15,
+    passThreshold: 0.5,
+  },
+  slider: {
+    name: 'Slider',
+    description: 'Slide to unlock',
+    icon: '🎚️',
+    category: 'classic',
+    baseWeight: 0.9,
+    hardnessConstant: 2.0,
+    duration: 15,
+    passThreshold: 0.5,
+  },
+  rotation: {
+    name: 'Rings',
+    description: 'Align the rotating rings',
+    icon: '🔄',
+    category: 'classic',
+    baseWeight: 1.2,
+    hardnessConstant: 2.4,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  wire: {
+    name: 'Wire',
+    description: 'Connect the right wires',
+    icon: '🔌',
+    category: 'classic',
+    baseWeight: 1.0,
+    hardnessConstant: 2.1,
+    duration: 15,
+    passThreshold: 0.5,
+  },
+  fingerprint: {
+    name: 'Fingerprint',
+    description: 'Match the print',
+    icon: '👆',
+    category: 'classic',
+    baseWeight: 1.1,
+    hardnessConstant: 2.3,
+    duration: 10,
+    passThreshold: 0.5,
+  },
+  morse: {
+    name: 'Morse',
+    description: 'Tap the code',
+    icon: '📡',
+    category: 'classic',
+    baseWeight: 1.3,
+    hardnessConstant: 2.5,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  colorcode: {
+    name: 'Color Code',
+    description: 'Match the color sequence',
+    icon: '🎨',
+    category: 'classic',
+    baseWeight: 1.0,
+    hardnessConstant: 2.2,
+    duration: 15,
+    passThreshold: 0.5,
+  },
+  safedial: {
+    name: 'Safe Dial',
+    description: 'Crack the safe',
+    icon: '🔐',
+    category: 'classic',
+    baseWeight: 1.4,
+    hardnessConstant: 2.6,
+    duration: 25,
+    passThreshold: 0.4,
+  },
+
+  // ============================================
+  // ARCADE GAMES (12)
+  // ============================================
   pacman: {
     name: 'Pac-Man',
-    description: 'Eat dots while avoiding the ghost',
+    description: 'Eat dots, avoid ghost',
     icon: '🟡',
     category: 'arcade',
     baseWeight: 1.2,
@@ -130,8 +228,8 @@ export const MODULE_CONFIG = {
     passThreshold: 0.5,
   },
   spaceinvaders: {
-    name: 'Space Invaders',
-    description: 'Shoot all the aliens before they land',
+    name: 'Invaders',
+    description: 'Shoot all aliens',
     icon: '👾',
     category: 'arcade',
     baseWeight: 1.2,
@@ -141,7 +239,7 @@ export const MODULE_CONFIG = {
   },
   frogger: {
     name: 'Frogger',
-    description: 'Cross the road without getting hit',
+    description: 'Cross the road',
     icon: '🐸',
     category: 'arcade',
     baseWeight: 1.1,
@@ -150,8 +248,8 @@ export const MODULE_CONFIG = {
     passThreshold: 0.5,
   },
   donkeykong: {
-    name: 'Donkey Kong',
-    description: 'Jump over the barrels',
+    name: 'DK',
+    description: 'Jump the barrels',
     icon: '🦍',
     category: 'arcade',
     baseWeight: 1.3,
@@ -161,7 +259,7 @@ export const MODULE_CONFIG = {
   },
   centipede: {
     name: 'Centipede',
-    description: 'Destroy the centipede segments',
+    description: 'Destroy segments',
     icon: '🐛',
     category: 'arcade',
     baseWeight: 1.2,
@@ -171,7 +269,7 @@ export const MODULE_CONFIG = {
   },
   asteroids: {
     name: 'Asteroids',
-    description: 'Destroy all the asteroids',
+    description: 'Blast the rocks',
     icon: '🪨',
     category: 'arcade',
     baseWeight: 1.4,
@@ -179,11 +277,74 @@ export const MODULE_CONFIG = {
     duration: 20,
     passThreshold: 0.4,
   },
-  // Puzzle Games
+  snake: {
+    name: 'Snake',
+    description: 'Grow without crashing',
+    icon: '🐍',
+    category: 'arcade',
+    baseWeight: 1.1,
+    hardnessConstant: 2.2,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  breakout: {
+    name: 'Breakout',
+    description: 'Break all the bricks',
+    icon: '🧱',
+    category: 'arcade',
+    baseWeight: 1.2,
+    hardnessConstant: 2.3,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  tetris: {
+    name: 'Tetris',
+    description: 'Clear the lines',
+    icon: '🟦',
+    category: 'arcade',
+    baseWeight: 1.3,
+    hardnessConstant: 2.4,
+    duration: 30,
+    passThreshold: 0.5,
+  },
+  galaga: {
+    name: 'Galaga',
+    description: 'Defeat the swarm',
+    icon: '🚀',
+    category: 'arcade',
+    baseWeight: 1.2,
+    hardnessConstant: 2.3,
+    duration: 15,
+    passThreshold: 0.5,
+  },
+  digdug: {
+    name: 'Dig Dug',
+    description: 'Dig and defeat',
+    icon: '⛏️',
+    category: 'arcade',
+    baseWeight: 1.1,
+    hardnessConstant: 2.2,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  qbert: {
+    name: 'Q*bert',
+    description: 'Color all tiles',
+    icon: '🔺',
+    category: 'arcade',
+    baseWeight: 1.2,
+    hardnessConstant: 2.3,
+    duration: 15,
+    passThreshold: 0.5,
+  },
+
+  // ============================================
+  // PUZZLES (12)
+  // ============================================
   quickmath: {
-    name: 'Quick Math',
-    description: 'Solve math problems as fast as you can',
-    icon: '🔢',
+    name: 'Math',
+    description: 'Solve fast',
+    icon: '➕',
     category: 'puzzle',
     baseWeight: 1.0,
     hardnessConstant: 2.1,
@@ -191,8 +352,8 @@ export const MODULE_CONFIG = {
     passThreshold: 0.5,
   },
   wordscramble: {
-    name: 'Word Scramble',
-    description: 'Unscramble the words',
+    name: 'Scramble',
+    description: 'Unscramble words',
     icon: '📝',
     category: 'puzzle',
     baseWeight: 1.0,
@@ -201,8 +362,8 @@ export const MODULE_CONFIG = {
     passThreshold: 0.5,
   },
   memorymatch: {
-    name: 'Memory Match',
-    description: 'Find all the matching pairs',
+    name: 'Memory',
+    description: 'Match the pairs',
     icon: '🧠',
     category: 'puzzle',
     baseWeight: 1.1,
@@ -210,10 +371,101 @@ export const MODULE_CONFIG = {
     duration: 30,
     passThreshold: 0.4,
   },
-  // Custom Games (placeholder for user-created games)
+  sudoku: {
+    name: 'Sudoku',
+    description: 'Fill the grid',
+    icon: '9️⃣',
+    category: 'puzzle',
+    baseWeight: 1.3,
+    hardnessConstant: 2.5,
+    duration: 45,
+    passThreshold: 0.4,
+  },
+  jigsaw: {
+    name: 'Jigsaw',
+    description: 'Complete the puzzle',
+    icon: '🧩',
+    category: 'puzzle',
+    baseWeight: 1.1,
+    hardnessConstant: 2.2,
+    duration: 30,
+    passThreshold: 0.5,
+  },
+  wordsearch: {
+    name: 'Word Find',
+    description: 'Find hidden words',
+    icon: '🔍',
+    category: 'puzzle',
+    baseWeight: 1.0,
+    hardnessConstant: 2.1,
+    duration: 30,
+    passThreshold: 0.5,
+  },
+  logic: {
+    name: 'Logic',
+    description: 'Solve the puzzle',
+    icon: '🤔',
+    category: 'puzzle',
+    baseWeight: 1.2,
+    hardnessConstant: 2.4,
+    duration: 30,
+    passThreshold: 0.5,
+  },
+  maze: {
+    name: 'Maze',
+    description: 'Find the exit',
+    icon: '🌀',
+    category: 'puzzle',
+    baseWeight: 1.0,
+    hardnessConstant: 2.1,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  spotdiff: {
+    name: 'Spot It',
+    description: 'Find differences',
+    icon: '👁️',
+    category: 'puzzle',
+    baseWeight: 1.0,
+    hardnessConstant: 2.0,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  reaction: {
+    name: 'Reaction',
+    description: 'Test your reflexes',
+    icon: '⚡',
+    category: 'puzzle',
+    baseWeight: 0.9,
+    hardnessConstant: 1.8,
+    duration: 10,
+    passThreshold: 0.5,
+  },
+  numsequence: {
+    name: 'Numbers',
+    description: 'Complete the sequence',
+    icon: '🔢',
+    category: 'puzzle',
+    baseWeight: 1.1,
+    hardnessConstant: 2.2,
+    duration: 20,
+    passThreshold: 0.5,
+  },
+  cipher: {
+    name: 'Cipher',
+    description: 'Decode the message',
+    icon: '🔑',
+    category: 'puzzle',
+    baseWeight: 1.2,
+    hardnessConstant: 2.4,
+    duration: 30,
+    passThreshold: 0.5,
+  },
+
+  // Custom placeholder
   custom: {
-    name: 'Custom Game',
-    description: 'A user-created security challenge',
+    name: 'Custom',
+    description: 'User-created challenge',
     icon: '🎮',
     category: 'custom',
     baseWeight: 1.0,
@@ -225,10 +477,10 @@ export const MODULE_CONFIG = {
 
 // Module categories for UI grouping
 export const MODULE_CATEGORIES = {
-  classic: { name: 'Classic Locks', description: 'Traditional security challenges' },
-  arcade: { name: 'Arcade Games', description: 'Retro gaming challenges' },
-  puzzle: { name: 'Puzzles', description: 'Brain teasers and memory games' },
-  custom: { name: 'Custom', description: 'User-created security games' },
+  arcade: { name: 'Arcade', description: 'Classic gaming challenges' },
+  puzzle: { name: 'Puzzles', description: 'Brain teasers' },
+  classic: { name: 'Locks', description: 'Traditional security' },
+  custom: { name: 'Custom', description: 'User-created' },
 } as const;
 
 // Insurance plan presets

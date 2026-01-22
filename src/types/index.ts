@@ -1,19 +1,51 @@
 // Core game types for SAFE
 
-export type ModuleType =
+// Classic Locks (12)
+export type ClassicLockType =
   | 'pattern'
   | 'keypad'
   | 'timing'
+  | 'combination'
+  | 'sequence'
+  | 'slider'
+  | 'rotation'
+  | 'wire'
+  | 'fingerprint'
+  | 'morse'
+  | 'colorcode'
+  | 'safedial';
+
+// Arcade Games (12)
+export type ArcadeGameType =
   | 'pacman'
   | 'spaceinvaders'
   | 'frogger'
   | 'donkeykong'
   | 'centipede'
   | 'asteroids'
+  | 'snake'
+  | 'breakout'
+  | 'tetris'
+  | 'galaga'
+  | 'digdug'
+  | 'qbert';
+
+// Puzzles (12)
+export type PuzzleGameType =
   | 'quickmath'
   | 'wordscramble'
   | 'memorymatch'
-  | 'custom';
+  | 'sudoku'
+  | 'jigsaw'
+  | 'wordsearch'
+  | 'logic'
+  | 'maze'
+  | 'spotdiff'
+  | 'reaction'
+  | 'numsequence'
+  | 'cipher';
+
+export type ModuleType = ClassicLockType | ArcadeGameType | PuzzleGameType | 'custom';
 
 export interface SecurityModule {
   id: string;
@@ -57,6 +89,18 @@ export interface PlayerState {
   onboardingCompleted: boolean;
 }
 
+// Bot personality types for AI-driven bots
+export type BotPersonality =
+  | 'aggressive'
+  | 'defensive'
+  | 'balanced'
+  | 'trickster'
+  | 'minimalist'
+  | 'arcade_master'
+  | 'puzzle_expert'
+  | 'chaos'
+  | 'meta_gamer';
+
 export interface BotSafe {
   id: string;
   ownerName: string;
@@ -69,6 +113,9 @@ export interface BotSafe {
   successChance: 'low' | 'medium' | 'high';
   lastAttackedAt: number | null;
   attackCooldownUntil: number | null;
+  // AI bot properties
+  personality?: BotPersonality;
+  tagline?: string;
 }
 
 export interface AttackResult {

@@ -1,4 +1,5 @@
 // SAFE Game - Matchmaking & Bot Safe Generation
+// Now with AI-driven bot strategies
 
 import { BotSafe, SecurityModule, SecurityLoadout, ModuleType } from '../types';
 import { BOT_NAMES, ECONOMY, MODULE_CONFIG } from './constants';
@@ -11,6 +12,7 @@ import {
   getLootRange,
   getSuccessChanceLabel,
 } from './economy';
+import { aiBotService } from '../services/aiBotService';
 
 /**
  * Generate a random ID
@@ -34,15 +36,33 @@ function generateModule(type: ModuleType, difficulty: number): SecurityModule {
   };
 }
 
+// All available module types for varied loadouts
+const ALL_MODULE_TYPES: ModuleType[] = [
+  // Classic
+  'pattern', 'keypad', 'timing', 'combination', 'sequence', 'slider',
+  'rotation', 'wire', 'fingerprint', 'morse', 'colorcode', 'safedial',
+  // Arcade
+  'pacman', 'spaceinvaders', 'frogger', 'donkeykong', 'centipede', 'asteroids',
+  'snake', 'breakout', 'tetris', 'galaga', 'digdug', 'qbert',
+  // Puzzle
+  'quickmath', 'wordscramble', 'memorymatch', 'sudoku', 'jigsaw', 'wordsearch',
+  'logic', 'maze', 'spotdiff', 'reaction', 'numsequence', 'cipher',
+];
+
 /**
  * Generate a security loadout with given average difficulty
+ * Now uses varied module types from all categories
  */
-function generateLoadout(targetDifficulty: number): SecurityLoadout {
-  const moduleTypes: ModuleType[] = ['pattern', 'keypad', 'timing'];
+function generateLoadout(targetDifficulty: number, preferredTypes?: ModuleType[]): SecurityLoadout {
+  let selectedTypes: ModuleType[];
 
-  // Shuffle and pick modules
-  const shuffled = [...moduleTypes].sort(() => Math.random() - 0.5);
-  const selectedTypes = shuffled.slice(0, ECONOMY.maxModules);
+  if (preferredTypes && preferredTypes.length >= 3) {
+    selectedTypes = preferredTypes.slice(0, ECONOMY.maxModules);
+  } else {
+    // Pick random varied modules from all types
+    const shuffled = [...ALL_MODULE_TYPES].sort(() => Math.random() - 0.5);
+    selectedTypes = shuffled.slice(0, ECONOMY.maxModules);
+  }
 
   // Generate modules with some variance around target difficulty
   const modules = selectedTypes.map((type) => {
@@ -110,7 +130,7 @@ export function generateBotSafe(
 }
 
 /**
- * Generate a feed of bot safes
+ * Generate a feed of bot safes using AI-driven strategies
  */
 export function generateBotFeed(
   playerRating: number,
@@ -118,23 +138,33 @@ export function generateBotFeed(
 ): BotSafe[] {
   const safes: BotSafe[] = [];
 
-  // Mix of difficulties
-  const easyCount = Math.floor(count * 0.3);
-  const hardCount = Math.floor(count * 0.2);
-  const mixedCount = count - easyCount - hardCount;
-
-  for (let i = 0; i < easyCount; i++) {
-    safes.push(generateBotSafe(playerRating, 'easy'));
-  }
-  for (let i = 0; i < mixedCount; i++) {
-    safes.push(generateBotSafe(playerRating, 'mixed'));
-  }
-  for (let i = 0; i < hardCount; i++) {
-    safes.push(generateBotSafe(playerRating, 'hard'));
+  // Use AI service for most bots (sync version with local heuristics)
+  for (let i = 0; i < count; i++) {
+    // Get AI strategy (using local heuristics - fast, no API needed)
+    const strategy = aiBotService.generateLocalStrategy(playerRating);
+    const bot = aiBotService.createBotFromStrategy(strategy, playerRating);
+    safes.push(bot);
   }
 
   // Sort by Target Attractiveness Score
   return safes.sort((a, b) => calculateTAS(b, playerRating) - calculateTAS(a, playerRating));
+}
+
+/**
+ * Generate a feed of bot safes using async AI API (when configured)
+ * Falls back to local generation if API unavailable
+ */
+export async function generateAIBotFeed(
+  playerRating: number,
+  count: number = 10,
+  context?: { recentAttacks?: string[]; playerLoadout?: ModuleType[] }
+): Promise<BotSafe[]> {
+  try {
+    return await aiBotService.generateAIBotFeed(playerRating, count, context);
+  } catch (error) {
+    console.warn('AI bot feed generation failed, using fallback:', error);
+    return generateBotFeed(playerRating, count);
+  }
 }
 
 /**

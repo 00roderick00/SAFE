@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { BotSafe, MiniGameResult, AttackResult } from '../types';
 import { generateMiniGameConfig } from '../game/modules';
+import { ECONOMY } from '../game/constants';
 
 interface HeistStore {
   // State
@@ -77,15 +78,18 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
       return sum + (result.score * modules[index].weight) / totalWeight;
     }, 0);
 
-    const threshold = 0.65; // from constants
-    const success = totalScore >= threshold;
+    // Success requires passing ALL modules
+    const allModulesPassed = state.moduleResults.length === modules.length &&
+      state.moduleResults.every(r => r.passed);
+    const success = allModulesPassed;
 
-    // Calculate loot (will be processed by game store)
-    const lootFraction = 0.25;
-    const platformCut = 0.1;
-    const potentialLoot = state.currentTarget.safeBalance * lootFraction;
-    const lootGained = success ? Math.round(potentialLoot * (1 - platformCut)) : 0;
-    const platformFee = success ? Math.round(potentialLoot * platformCut) : 0;
+    // Calculate loot using economy constants (will be processed by game store)
+    const potentialLoot = Math.min(
+      state.currentTarget.safeBalance * ECONOMY.lootFraction,
+      ECONOMY.lootCap
+    );
+    const lootGained = success ? Math.round(potentialLoot * (1 - ECONOMY.platformCut)) : 0;
+    const platformFee = success ? Math.round(potentialLoot * ECONOMY.platformCut) : 0;
 
     const result: AttackResult = {
       id: `attack-${Date.now()}`,
@@ -95,7 +99,7 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
       success,
       moduleScores,
       totalScore,
-      threshold,
+      threshold: 1, // Must pass all locks
       stakePaid: state.stakePaid,
       lootGained,
       platformFee,

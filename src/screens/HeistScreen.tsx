@@ -1,3 +1,6 @@
+// Heist Screen - Danger Mode with Target Cards
+// Features: Red danger state, watchlist-style targets, difficulty bars
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -5,36 +8,44 @@ import {
   RefreshCw,
   AlertTriangle,
   Clock,
-  Coins,
-  Shield,
-  Target,
   ChevronRight,
+  ArrowLeft,
 } from 'lucide-react';
-import { PageHeader } from '../components/Layout';
-import { Card, Button, ConfirmModal } from '../components/ui';
 import { usePlayerStore } from '../store/playerStore';
 import { useGameStore } from '../store/gameStore';
 import { useHeistStore } from '../store/heistStore';
 import { BotSafe } from '../types';
 import { calculateLoot } from '../game/economy';
-import { ECONOMY } from '../game/constants';
+import { haptics } from '../utils/haptics';
 
-const difficultyColors = {
-  soft: 'text-primary bg-primary/10',
-  tricky: 'text-warning bg-warning/10',
-  brutal: 'text-danger bg-danger/10',
+// Difficulty bar component
+const DifficultyBar = ({ level }: { level: 'soft' | 'tricky' | 'brutal' }) => {
+  const filled = level === 'soft' ? 1 : level === 'tricky' ? 2 : 3;
+  const color = level === 'soft' ? 'easy' : level === 'tricky' ? 'medium' : 'hard';
+
+  return (
+    <div className="difficulty-bar">
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className={`difficulty-segment ${i <= filled ? `filled ${color}` : ''}`}
+        />
+      ))}
+    </div>
+  );
 };
 
-const successChanceColors = {
-  low: 'text-danger',
-  medium: 'text-warning',
-  high: 'text-primary',
-};
+// Target avatar with initials
+const TargetAvatar = ({ name, difficulty }: { name: string; difficulty: string }) => {
+  const initials = name.slice(0, 2).toUpperCase();
+  const bgColor = difficulty === 'soft' ? 'bg-profit/10' :
+                  difficulty === 'tricky' ? 'bg-warning/10' : 'bg-loss/10';
 
-const lootColors = {
-  small: 'text-text-dim',
-  moderate: 'text-warning',
-  rich: 'text-primary',
+  return (
+    <div className={`target-avatar ${bgColor}`}>
+      <span className="text-sm font-semibold text-text-dim">{initials}</span>
+    </div>
+  );
 };
 
 export const HeistScreen = () => {
@@ -71,6 +82,7 @@ export const HeistScreen = () => {
   }, [heistModeExpiresAt, exitHeistMode, navigate]);
 
   const handleRefresh = async () => {
+    haptics.light();
     setRefreshing(true);
     await new Promise((r) => setTimeout(r, 500));
     refreshBotSafes(riskRating);
@@ -79,11 +91,13 @@ export const HeistScreen = () => {
 
   const handleSelectTarget = (safe: BotSafe) => {
     if (safe.attackFee > safeBalance) return;
+    haptics.medium();
     setSelectedTarget(safe);
   };
 
   const handleConfirmAttack = () => {
     if (!selectedTarget) return;
+    haptics.heavy();
 
     // Deduct stake
     usePlayerStore.getState().withdrawTokens(selectedTarget.attackFee);
@@ -96,6 +110,11 @@ export const HeistScreen = () => {
     navigate('/attack');
   };
 
+  const handleCancelAttack = () => {
+    haptics.light();
+    setSelectedTarget(null);
+  };
+
   const getTimeRemaining = () => {
     if (!heistModeExpiresAt) return '0:00';
     const remaining = heistModeExpiresAt - Date.now();
@@ -105,76 +124,85 @@ export const HeistScreen = () => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
+  const formatValue = (value: number) => {
+    if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
+    return `$${value}`;
+  };
+
   return (
-    <div className="px-4 pb-8">
-      <PageHeader
-        title="Heist Mode"
-        subtitle="Choose a target and crack their safe"
-        action={
-          <Button
-            variant="ghost"
-            size="sm"
+    <div className="min-h-screen danger-mode pb-32">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm px-4 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <button
+              onClick={() => {
+                haptics.light();
+                navigate('/');
+              }}
+              className="p-2 -ml-2 text-text-dim hover:text-text"
+            >
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className="ml-2 text-lg font-semibold">Attack</h1>
+          </div>
+          <button
             onClick={handleRefresh}
             disabled={refreshing}
+            className="p-2 text-text-dim hover:text-text disabled:opacity-50"
           >
             <RefreshCw
-              size={18}
+              size={20}
               className={refreshing ? 'animate-spin' : ''}
             />
-          </Button>
-        }
-      />
-
-      {/* Heist Mode Status */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
-      >
-        <Card variant="elevated" padding="sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={18} className="text-danger" />
-              <span className="text-sm text-danger font-medium">
-                Your safe is vulnerable
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-danger">
-              <Clock size={16} />
-              <span className="font-display font-bold">
-                {getTimeRemaining()}
-              </span>
-            </div>
-          </div>
-        </Card>
-      </motion.div>
-
-      {/* Your Balance */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="mb-4"
-      >
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-text-dim">Your Balance:</span>
-          <span className="font-display font-bold text-primary">
-            {safeBalance.toLocaleString()} tokens
-          </span>
+          </button>
         </div>
-      </motion.div>
+      </header>
 
-      {/* Target List */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <h2 className="font-display text-lg font-semibold text-text mb-3">
-          Available Targets
-        </h2>
+      {/* Danger Banner */}
+      <div className="px-4 mt-2">
+        <div className="danger-banner">
+          <div className="danger-banner-text">
+            <AlertTriangle size={18} />
+            <span>VAULT EXPOSED</span>
+          </div>
+          <div className="danger-banner-timer">
+            <Clock size={14} className="inline mr-1" />
+            {getTimeRemaining()}
+          </div>
+        </div>
+      </div>
 
-        <div className="space-y-3">
+      {/* Available Balance */}
+      <div className="px-4 mt-4">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-text-dim">Available to stake</span>
+          <span className="font-semibold">${safeBalance.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Targets Section */}
+      <div className="px-4 mt-6">
+        <p className="section-label mb-3">Targets</p>
+
+        {botSafes.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="card-bordered p-8 text-center"
+          >
+            <EmptyTargetsIcon />
+            <p className="text-text font-medium mt-4">No targets found</p>
+            <p className="text-text-dim text-sm mt-1">Refresh to find new targets</p>
+            <button
+              className="btn-secondary mt-4"
+              onClick={handleRefresh}
+            >
+              <RefreshCw size={16} className="mr-2" />
+              Find Targets
+            </button>
+          </motion.div>
+        ) : (
           <AnimatePresence>
             {botSafes.map((safe, index) => {
               const canAfford = safe.attackFee <= safeBalance;
@@ -184,125 +212,142 @@ export const HeistScreen = () => {
               return (
                 <motion.div
                   key={safe.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: index * 0.05 }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ delay: index * 0.03 }}
                 >
-                  <Card
-                    variant={canAfford ? 'default' : 'default'}
-                    padding="md"
-                    className={`
-                      cursor-pointer transition-all
-                      ${canAfford ? 'hover:border-primary/30' : 'opacity-50'}
-                      ${wasRecentlyAttacked ? 'border-warning/30' : ''}
-                    `}
+                  <button
+                    className={`target-card w-full ${!canAfford ? 'opacity-50' : ''}`}
                     onClick={() => handleSelectTarget(safe)}
+                    disabled={!canAfford}
                   >
-                    <div className="flex items-center gap-3">
-                      {/* Safe Icon */}
-                      <div className="w-12 h-12 rounded-lg bg-surface-light flex items-center justify-center">
-                        <Target size={24} className="text-primary" />
+                    <TargetAvatar name={safe.ownerName} difficulty={safe.difficultyBand} />
+
+                    <div className="target-info">
+                      <div className="flex items-center gap-2">
+                        <span className="target-name">{safe.ownerName}</span>
+                        {wasRecentlyAttacked && (
+                          <span className="text-[10px] text-warning bg-warning/10 px-1.5 py-0.5 rounded">
+                            recent
+                          </span>
+                        )}
                       </div>
+                      {safe.tagline && (
+                        <p className="target-tagline truncate">"{safe.tagline}"</p>
+                      )}
+                      <DifficultyBar level={safe.difficultyBand} />
+                    </div>
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-display font-semibold text-text truncate">
-                            {safe.ownerName}
-                          </span>
-                          {wasRecentlyAttacked && (
-                            <span className="text-xs text-warning">
-                              (attacked)
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          {/* Difficulty */}
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded ${
-                              difficultyColors[safe.difficultyBand]
-                            }`}
-                          >
-                            {safe.difficultyBand}
-                          </span>
-
-                          {/* Loot range */}
-                          <span
-                            className={`text-xs flex items-center gap-1 ${
-                              lootColors[safe.lootRange]
-                            }`}
-                          >
-                            <Coins size={12} />
-                            {safe.lootRange}
-                          </span>
-
-                          {/* Success chance */}
-                          <span
-                            className={`text-xs ${
-                              successChanceColors[safe.successChance]
-                            }`}
-                          >
-                            {safe.successChance} chance
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Stake & Action */}
-                      <div className="text-right">
-                        <div className="text-xs text-text-dim mb-1">Stake</div>
-                        <div
-                          className={`font-display font-bold ${
-                            canAfford ? 'text-warning' : 'text-danger'
-                          }`}
-                        >
-                          {safe.attackFee}
-                        </div>
-                        <ChevronRight
-                          size={20}
-                          className={`ml-auto mt-1 ${
-                            canAfford ? 'text-primary' : 'text-text-dim'
-                          }`}
-                        />
+                    <div className="target-stats">
+                      <div className="target-value">{formatValue(safe.safeBalance)}</div>
+                      <div className="target-stake">
+                        Stake: ${safe.attackFee}
                       </div>
                     </div>
-                  </Card>
+
+                    <ChevronRight size={20} className="ml-2 text-text-dim" />
+                  </button>
                 </motion.div>
               );
             })}
           </AnimatePresence>
-        </div>
-
-        {botSafes.length === 0 && (
-          <Card variant="default" padding="lg" className="text-center">
-            <p className="text-text-dim mb-4">No targets available</p>
-            <Button variant="secondary" onClick={handleRefresh}>
-              <RefreshCw size={16} className="mr-2" />
-              Find Targets
-            </Button>
-          </Card>
         )}
-      </motion.div>
+      </div>
 
       {/* Attack Confirmation Modal */}
-      <ConfirmModal
-        open={!!selectedTarget}
-        onOpenChange={() => setSelectedTarget(null)}
-        title="Confirm Attack"
-        message={
-          selectedTarget
-            ? `Attack ${selectedTarget.ownerName}'s safe? You'll stake ${
-                selectedTarget.attackFee
-              } tokens. Potential loot: ~${Math.round(
-                calculateLoot(selectedTarget.safeBalance)
-              )} tokens.`
-            : ''
-        }
-        confirmLabel="Start Attack"
-        onConfirm={handleConfirmAttack}
-        variant="danger"
-      />
+      <AnimatePresence>
+        {selectedTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-end justify-center bg-black/60"
+            onClick={handleCancelAttack}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25 }}
+              className="w-full max-w-lg bg-surface rounded-t-2xl p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center mb-6">
+                <h3 className="text-xl font-semibold mb-2">Confirm Attack</h3>
+                <p className="text-text-dim">
+                  Attack <span className="text-text font-medium">{selectedTarget.ownerName}</span>?
+                </p>
+              </div>
+
+              <div className="card-bordered p-4 mb-6">
+                <div className="stat-row">
+                  <span className="stat-label">Your Stake</span>
+                  <span className="stat-value text-loss">-${selectedTarget.attackFee}</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Potential Loot</span>
+                  <span className="stat-value text-profit">
+                    ~${Math.round(calculateLoot(selectedTarget.safeBalance))}
+                  </span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Difficulty</span>
+                  <span className="stat-value capitalize">{selectedTarget.difficultyBand}</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  className="btn-secondary flex-1"
+                  onClick={handleCancelAttack}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn-danger flex-1"
+                  onClick={handleConfirmAttack}
+                >
+                  Attack
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fixed Action Bar */}
+      <div className="action-bar">
+        <button
+          className="btn-secondary"
+          onClick={() => {
+            haptics.light();
+            exitHeistMode();
+            navigate('/');
+          }}
+        >
+          Exit Heist Mode
+        </button>
+      </div>
     </div>
   );
 };
+
+// Empty state icon
+const EmptyTargetsIcon = () => (
+  <svg
+    width="64"
+    height="64"
+    viewBox="0 0 64 64"
+    fill="none"
+    className="mx-auto opacity-40"
+  >
+    <circle cx="32" cy="32" r="24" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
+    <circle cx="32" cy="32" r="12" stroke="currentColor" strokeWidth="2" />
+    <circle cx="32" cy="32" r="4" fill="currentColor" />
+    <line x1="32" y1="4" x2="32" y2="12" stroke="currentColor" strokeWidth="2" />
+    <line x1="32" y1="52" x2="32" y2="60" stroke="currentColor" strokeWidth="2" />
+    <line x1="4" y1="32" x2="12" y2="32" stroke="currentColor" strokeWidth="2" />
+    <line x1="52" y1="32" x2="60" y2="32" stroke="currentColor" strokeWidth="2" />
+  </svg>
+);

@@ -96,7 +96,7 @@ export const InsuranceScreen = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
         >
-          <Card variant="neon" padding="md">
+          <Card variant="elevated" padding="md">
             <div className="flex items-center gap-2 mb-3">
               <Shield size={20} className="text-primary" />
               <span className="font-display font-semibold text-primary">

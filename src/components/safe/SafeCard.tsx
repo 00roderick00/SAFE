@@ -36,7 +36,7 @@ export const SafeCard = () => {
     insurancePolicy && Date.now() < insurancePolicy.expiresAt;
 
   return (
-    <Card variant="neon" className="relative overflow-hidden">
+    <Card variant="elevated" className="relative overflow-hidden">
       {/* Background safe graphic */}
       <div className="absolute inset-0 opacity-5">
         <svg viewBox="0 0 100 100" className="w-full h-full">

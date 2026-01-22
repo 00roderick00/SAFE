@@ -2,15 +2,16 @@ import { forwardRef, HTMLAttributes } from 'react';
 import { motion, HTMLMotionProps } from 'framer-motion';
 
 interface CardProps extends HTMLMotionProps<'div'> {
-  variant?: 'default' | 'elevated' | 'neon';
+  variant?: 'default' | 'elevated' | 'clean' | 'interactive';
   padding?: 'none' | 'sm' | 'md' | 'lg';
   children: React.ReactNode;
 }
 
 const variantStyles = {
-  default: 'bg-surface border border-primary/10',
-  elevated: 'bg-surface border border-primary/20 shadow-lg shadow-primary/5',
-  neon: 'bg-surface border border-primary/30 neon-border-primary',
+  default: 'bg-surface border border-border',
+  elevated: 'bg-surface border border-border shadow-lg shadow-black/20',
+  clean: 'bg-surface-light border border-border',
+  interactive: 'bg-surface border border-border hover:border-primary/50 hover:bg-surface-light transition-colors cursor-pointer',
 };
 
 const paddingStyles = {
@@ -67,7 +68,7 @@ export const CardHeader = ({
   return (
     <div className={`flex items-start justify-between mb-4 ${className}`} {...props}>
       <div>
-        <h3 className="font-display text-lg font-semibold text-text">{title}</h3>
+        <h3 className="text-lg font-semibold text-text">{title}</h3>
         {subtitle && (
           <p className="text-sm text-text-dim mt-0.5">{subtitle}</p>
         )}
@@ -98,7 +99,7 @@ export const CardFooter = ({
 }: HTMLAttributes<HTMLDivElement>) => {
   return (
     <div
-      className={`mt-4 pt-4 border-t border-primary/10 ${className}`}
+      className={`mt-4 pt-4 border-t border-border ${className}`}
       {...props}
     >
       {children}

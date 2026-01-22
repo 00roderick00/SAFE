@@ -73,14 +73,20 @@ export const AttackScreen = () => {
       recordModuleResult(result);
       setPhase('result');
 
-      // After showing result, move to next module or complete
+      // After showing result, check if passed
       setTimeout(() => {
-        const hasMore = nextModule();
-        if (hasMore) {
-          setPhase('ready');
-          setCountdown(2); // Shorter countdown between modules
-        } else {
+        if (!result.passed) {
+          // Failed this lock - heist ends immediately
           setPhase('complete');
+        } else {
+          // Passed - move to next module or complete if all done
+          const hasMore = nextModule();
+          if (hasMore) {
+            setPhase('ready');
+            setCountdown(2); // Shorter countdown between modules
+          } else {
+            setPhase('complete');
+          }
         }
       }, 1500);
     },
@@ -343,8 +349,8 @@ export const AttackScreen = () => {
               animate={{ opacity: 1, y: 0 }}
               className="w-full max-w-sm text-center"
             >
-              <Card variant="neon" padding="lg">
-                {totalScore >= ECONOMY.breachThreshold ? (
+              <Card variant="elevated" padding="lg">
+                {passedCount === progress.total ? (
                   <>
                     <CheckCircle
                       size={64}
@@ -354,7 +360,7 @@ export const AttackScreen = () => {
                       SAFE BREACHED!
                     </h2>
                     <p className="text-text-dim mb-4">
-                      You cracked {passedCount}/{progress.total} locks
+                      You cracked all {progress.total} locks!
                     </p>
 
                     <div className="flex items-center justify-center gap-2 text-2xl font-display font-bold text-primary mb-6">
@@ -376,14 +382,11 @@ export const AttackScreen = () => {
                       HEIST FAILED
                     </h2>
                     <p className="text-text-dim mb-4">
-                      You only cracked {passedCount}/{progress.total} locks
+                      Failed on lock {passedCount + 1} of {progress.total}
                     </p>
 
                     <div className="text-lg text-text-dim mb-6">
-                      <p>
-                        Score: {Math.round(totalScore * 100)}% (needed{' '}
-                        {Math.round(ECONOMY.breachThreshold * 100)}%)
-                      </p>
+                      <p className="mb-1">You must crack all locks to breach the safe!</p>
                       <p className="text-danger">Lost: {stakePaid} tokens</p>
                     </div>
                   </>

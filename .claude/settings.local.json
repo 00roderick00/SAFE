@@ -22,7 +22,9 @@
       "Bash(npx surge:*)",
       "Bash(npx gh-pages:*)",
       "Bash(gh api:*)",
-      "Bash(gh repo edit:*)"
+      "Bash(gh repo edit:*)",
+      "Bash(npm run deploy:*)",
+      "Bash(git remote:*)"
     ]
   }
 }
