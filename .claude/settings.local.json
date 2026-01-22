@@ -25,7 +25,9 @@
       "Bash(gh repo edit:*)",
       "Bash(npm run deploy:*)",
       "Bash(git remote:*)",
-      "WebFetch(domain:00roderick00.github.io)"
+      "WebFetch(domain:00roderick00.github.io)",
+      "Bash(grep:*)",
+      "Bash(vercel:*)"
     ]
   }
 }

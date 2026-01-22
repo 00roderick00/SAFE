@@ -30,7 +30,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter basename="/SAFE">
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         {/* Full screen routes without bottom navigation */}
         <Route path="/attack" element={<AttackScreen />} />
