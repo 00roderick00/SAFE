@@ -30,7 +30,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/SAFE">
       <Routes>
         {/* Full screen routes without bottom navigation */}
         <Route path="/attack" element={<AttackScreen />} />
