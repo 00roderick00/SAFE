@@ -2,7 +2,7 @@
 // Can connect to Claude API or use local heuristics as fallback
 
 import { ModuleType, SecurityModule, SecurityLoadout, BotSafe } from '../types';
-import { MODULE_CONFIG, BOT_NAMES, ECONOMY } from '../game/constants';
+import { MODULE_CONFIG, BOT_NAMES, ECONOMY, MODULE_TYPES_BY_CATEGORY, ALL_MODULE_TYPES } from '../game/constants';
 import {
   calculateSecurityScore,
   calculateAttackFee,
@@ -48,19 +48,6 @@ const DEFAULT_CONFIG: AIServiceConfig = {
   cacheResponses: true,
   cacheDuration: 5 * 60 * 1000, // 5 minutes
 };
-
-// Get all available module types by category
-const MODULE_TYPES_BY_CATEGORY = {
-  classic: ['pattern', 'keypad', 'timing', 'combination', 'sequence', 'slider', 'rotation', 'wire', 'fingerprint', 'morse', 'colorcode', 'safedial'] as ModuleType[],
-  arcade: ['pacman', 'spaceinvaders', 'frogger', 'donkeykong', 'centipede', 'asteroids', 'snake', 'breakout', 'tetris', 'galaga', 'digdug', 'qbert'] as ModuleType[],
-  puzzle: ['quickmath', 'wordscramble', 'memorymatch', 'sudoku', 'jigsaw', 'wordsearch', 'logic', 'maze', 'spotdiff', 'reaction', 'numsequence', 'cipher'] as ModuleType[],
-};
-
-const ALL_MODULE_TYPES = [
-  ...MODULE_TYPES_BY_CATEGORY.classic,
-  ...MODULE_TYPES_BY_CATEGORY.arcade,
-  ...MODULE_TYPES_BY_CATEGORY.puzzle,
-];
 
 // Personality-based strategy templates
 const PERSONALITY_TEMPLATES: Record<BotPersonality, Partial<BotStrategy>> = {

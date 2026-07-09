@@ -2,7 +2,7 @@
 // Now with AI-driven bot strategies
 
 import { BotSafe, SecurityModule, SecurityLoadout, ModuleType } from '../types';
-import { BOT_NAMES, ECONOMY, MODULE_CONFIG } from './constants';
+import { BOT_NAMES, ECONOMY, MODULE_CONFIG, ALL_MODULE_TYPES } from './constants';
 import {
   calculateSecurityScore,
   calculateAttackFee,
@@ -34,19 +34,6 @@ function generateModule(type: ModuleType, difficulty: number): SecurityModule {
     description: config.description,
   };
 }
-
-// All available module types for varied loadouts
-const ALL_MODULE_TYPES: ModuleType[] = [
-  // Classic
-  'pattern', 'keypad', 'timing', 'combination', 'sequence', 'slider',
-  'rotation', 'wire', 'fingerprint', 'morse', 'colorcode', 'safedial',
-  // Arcade
-  'pacman', 'spaceinvaders', 'frogger', 'donkeykong', 'centipede', 'asteroids',
-  'snake', 'breakout', 'tetris', 'galaga', 'digdug', 'qbert',
-  // Puzzle
-  'quickmath', 'wordscramble', 'memorymatch', 'sudoku', 'jigsaw', 'wordsearch',
-  'logic', 'maze', 'spotdiff', 'reaction', 'numsequence', 'cipher',
-];
 
 /**
  * Generate a security loadout with given average difficulty

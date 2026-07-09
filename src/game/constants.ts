@@ -530,3 +530,24 @@ export const LOOT_RANGES = {
   moderate: { min: 501, max: 2000 },
   rich: { min: 2001, max: Infinity },
 } as const;
+
+// Single source of truth for the runtime list of module types,
+// derived from MODULE_CONFIG. Add a module type once (as a key in
+// MODULE_CONFIG with a category) and it will show up everywhere.
+import type { ModuleType } from '../types';
+
+type ModuleCategory = 'classic' | 'arcade' | 'puzzle';
+
+export const MODULE_TYPES_BY_CATEGORY: Record<ModuleCategory, ModuleType[]> = (() => {
+  const byCat: Record<ModuleCategory, ModuleType[]> = { classic: [], arcade: [], puzzle: [] };
+  for (const [type, cfg] of Object.entries(MODULE_CONFIG) as [ModuleType, { category: ModuleCategory }][]) {
+    byCat[cfg.category].push(type);
+  }
+  return byCat;
+})();
+
+export const ALL_MODULE_TYPES: ModuleType[] = [
+  ...MODULE_TYPES_BY_CATEGORY.classic,
+  ...MODULE_TYPES_BY_CATEGORY.arcade,
+  ...MODULE_TYPES_BY_CATEGORY.puzzle,
+];
