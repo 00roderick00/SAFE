@@ -540,8 +540,10 @@ type ModuleCategory = 'classic' | 'arcade' | 'puzzle';
 
 export const MODULE_TYPES_BY_CATEGORY: Record<ModuleCategory, ModuleType[]> = (() => {
   const byCat: Record<ModuleCategory, ModuleType[]> = { classic: [], arcade: [], puzzle: [] };
-  for (const [type, cfg] of Object.entries(MODULE_CONFIG) as [ModuleType, { category: ModuleCategory }][]) {
-    byCat[cfg.category].push(type);
+  for (const [type, cfg] of Object.entries(MODULE_CONFIG) as [ModuleType, { category: string }][]) {
+    if (cfg.category === 'classic' || cfg.category === 'arcade' || cfg.category === 'puzzle') {
+      byCat[cfg.category].push(type);
+    }
   }
   return byCat;
 })();
