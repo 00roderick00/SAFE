@@ -27,8 +27,9 @@ export const ECONOMY = {
   maxModules: 3, // security slots available
   maxSecurityScore: 100, // S capped at 100
 
-  // Breach calculation
-  breachThreshold: 0.65, // θ - weighted score needed to breach
+  // Success-probability sigmoid (used only for insurance pricing and
+  // safe-dashboard risk estimates; the actual breach model is
+  // all-or-nothing on the per-lock passed/failed outcomes).
   successRateMin: 0.01, // minimum success probability
   successRateMax: 0.99, // maximum success probability
   skillCurveSharpness: 10, // τ - controls logistic curve sharpness
@@ -528,11 +529,4 @@ export const LOOT_RANGES = {
   small: { min: 0, max: 500 },
   moderate: { min: 501, max: 2000 },
   rich: { min: 2001, max: Infinity },
-} as const;
-
-// Success chance thresholds
-export const SUCCESS_CHANCES = {
-  low: { min: 0, max: 0.3 },
-  medium: { min: 0.3, max: 0.6 },
-  high: { min: 0.6, max: 1 },
 } as const;

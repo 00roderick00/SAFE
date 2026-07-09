@@ -8,8 +8,6 @@ import {
   calculateAttackFee,
   getDifficultyBand,
   getLootRange,
-  getSuccessChanceLabel,
-  calculateSuccessProbability,
 } from '../game/economy';
 
 // Bot personality archetypes that influence strategy
@@ -402,11 +400,11 @@ Respond with ONLY valid JSON, no other text.`;
     context?: { recentAttacks?: string[]; playerLoadout?: ModuleType[] }
   ): Promise<BotSafe> {
     const strategy = await this.generateStrategy(playerRating, context);
-    return this.createBotFromStrategy(strategy, playerRating);
+    return this.createBotFromStrategy(strategy);
   }
 
   // Create a BotSafe from a strategy
-  createBotFromStrategy(strategy: BotStrategy, playerRating: number): BotSafe {
+  createBotFromStrategy(strategy: BotStrategy): BotSafe {
     // Determine difficulty based on preference
     let baseDifficulty: number;
     switch (strategy.difficultyPreference) {
@@ -454,7 +452,6 @@ Respond with ONLY valid JSON, no other text.`;
     const safeBalance = Math.round(baseBalance);
     const securityScore = loadout.effectiveScore;
     const attackFee = calculateAttackFee(safeBalance, securityScore);
-    const successProb = calculateSuccessProbability(playerRating, securityScore);
 
     return {
       id: `ai-bot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -465,7 +462,6 @@ Respond with ONLY valid JSON, no other text.`;
       difficultyBand: getDifficultyBand(securityScore),
       lootRange: getLootRange(safeBalance),
       attackFee,
-      successChance: getSuccessChanceLabel(successProb),
       lastAttackedAt: null,
       attackCooldownUntil: null,
       // Extended bot info

@@ -10,7 +10,6 @@ import {
   calculateSuccessProbability,
   getDifficultyBand,
   getLootRange,
-  getSuccessChanceLabel,
 } from './economy';
 import { aiBotService } from '../services/aiBotService';
 
@@ -112,7 +111,6 @@ export function generateBotSafe(
   const securityScore = loadout.effectiveScore;
 
   const attackFee = calculateAttackFee(safeBalance, securityScore);
-  const successProb = calculateSuccessProbability(playerRating, securityScore);
 
   return {
     id: generateId(),
@@ -123,7 +121,6 @@ export function generateBotSafe(
     difficultyBand: getDifficultyBand(securityScore),
     lootRange: getLootRange(safeBalance),
     attackFee,
-    successChance: getSuccessChanceLabel(successProb),
     lastAttackedAt: null,
     attackCooldownUntil: null,
   };
@@ -142,7 +139,7 @@ export function generateBotFeed(
   for (let i = 0; i < count; i++) {
     // Get AI strategy (using local heuristics - fast, no API needed)
     const strategy = aiBotService.generateLocalStrategy(playerRating);
-    const bot = aiBotService.createBotFromStrategy(strategy, playerRating);
+    const bot = aiBotService.createBotFromStrategy(strategy);
     safes.push(bot);
   }
 
@@ -228,7 +225,6 @@ export function generatePracticeSafe(): BotSafe {
     difficultyBand: 'soft',
     lootRange: 'small',
     attackFee: 0, // free practice
-    successChance: 'high',
     lastAttackedAt: null,
     attackCooldownUntil: null,
   };

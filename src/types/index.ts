@@ -110,7 +110,6 @@ export interface BotSafe {
   difficultyBand: 'soft' | 'tricky' | 'brutal';
   lootRange: 'small' | 'moderate' | 'rich';
   attackFee: number;
-  successChance: 'low' | 'medium' | 'high';
   lastAttackedAt: number | null;
   attackCooldownUntil: number | null;
   // AI bot properties

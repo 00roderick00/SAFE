@@ -2,7 +2,7 @@
 // All formulas from the design spec
 
 import { SecurityModule, SecurityLoadout, EconomyStats, InsurancePolicy } from '../types';
-import { ECONOMY, MODULE_CONFIG, DIFFICULTY_BANDS, LOOT_RANGES, SUCCESS_CHANCES } from './constants';
+import { ECONOMY, MODULE_CONFIG, DIFFICULTY_BANDS, LOOT_RANGES } from './constants';
 
 /**
  * Calculate module strength: s_j = w_j * (exp(k_j * d_j) - 1)
@@ -226,15 +226,6 @@ export function getLootRange(safeValue: number): 'small' | 'moderate' | 'rich' {
 }
 
 /**
- * Get success chance label
- */
-export function getSuccessChanceLabel(probability: number): 'low' | 'medium' | 'high' {
-  if (probability <= SUCCESS_CHANCES.low.max) return 'low';
-  if (probability <= SUCCESS_CHANCES.medium.max) return 'medium';
-  return 'high';
-}
-
-/**
  * Calculate comprehensive economy stats for a safe configuration
  */
 export function calculateEconomyStats(
@@ -279,26 +270,3 @@ export function calculateEconomyStats(
   };
 }
 
-/**
- * Calculate breach result from mini-game scores
- * Uses weighted score model: breach if X >= θ
- */
-export function calculateBreachResult(
-  moduleScores: { moduleId: string; score: number; weight: number }[]
-): {
-  totalScore: number;
-  threshold: number;
-  breached: boolean;
-} {
-  const totalWeight = moduleScores.reduce((sum, m) => sum + m.weight, 0);
-  const weightedScore = moduleScores.reduce(
-    (sum, m) => sum + (m.score * m.weight) / totalWeight,
-    0
-  );
-
-  return {
-    totalScore: Math.round(weightedScore * 100) / 100,
-    threshold: ECONOMY.breachThreshold,
-    breached: weightedScore >= ECONOMY.breachThreshold,
-  };
-}
