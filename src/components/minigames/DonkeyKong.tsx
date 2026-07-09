@@ -16,7 +16,6 @@ interface Barrel {
 
 const GAME_WIDTH = 280;
 const GAME_HEIGHT = 360;
-const PLATFORM_HEIGHT = 60;
 
 export const DonkeyKong = ({ difficulty, onComplete }: DonkeyKongProps) => {
   const [playerX, setPlayerX] = useState(40);

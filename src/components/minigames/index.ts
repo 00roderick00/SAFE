@@ -49,3 +49,4 @@ export { CipherGame } from './CipherGame';
 // Registry (unified dispatch)
 export { MINIGAME_REGISTRY, getMiniGameComponent } from './registry';
 export { MiniGameErrorBoundary } from './MiniGameErrorBoundary';
+export { MiniGameHost } from './MiniGameHost';

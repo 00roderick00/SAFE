@@ -15,7 +15,7 @@ interface Piece {
 
 const GRID_SIZE = 3; // 3x3 grid = 9 pieces
 
-export const JigsawGame = ({ difficulty, onComplete }: JigsawGameProps) => {
+export const JigsawGame = ({ onComplete }: JigsawGameProps) => {
   const [pieces, setPieces] = useState<Piece[]>([]);
   const [selectedPiece, setSelectedPiece] = useState<number | null>(null);
   const [correctCount, setCorrectCount] = useState(0);

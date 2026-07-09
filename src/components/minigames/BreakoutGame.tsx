@@ -103,7 +103,7 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
 
     const ballSpeed = 3.5 + difficulty * 2;
     let currentScore = score;
-    let currentBricks = bricks.map(row => [...row]);
+    const currentBricks = bricks.map(row => [...row]);
 
     const gameLoop = () => {
       if (gameOver) return;

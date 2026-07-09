@@ -35,7 +35,7 @@ const COLORS = [
 export const TetrisGame = ({ difficulty, onComplete }: TetrisGameProps) => {
   const [board, setBoard] = useState<number[][]>([]);
   const [piece, setPiece] = useState<{ shape: number[][]; x: number; y: number; color: number } | null>(null);
-  const [score, setScore] = useState(0);
+  const [, setScore] = useState(0);
   const [linesCleared, setLinesCleared] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(50);

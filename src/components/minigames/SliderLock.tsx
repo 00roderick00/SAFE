@@ -25,7 +25,7 @@ export const SliderLock = ({ difficulty, onComplete }: SliderLockProps) => {
     solution.push(0); // Empty tile
 
     // Shuffle with valid moves
-    let shuffled = [...solution];
+    const shuffled = [...solution];
     let empty = totalTiles - 1;
 
     const shuffleMoves = Math.floor(30 + difficulty * 30);

@@ -18,9 +18,9 @@ const MORSE_CODE: { [key: string]: string } = {
 
 const WORDS = ['CODE', 'SAFE', 'KEY', 'LOCK', 'HACK', 'OPEN'];
 
-export const MorseLock = ({ difficulty, onComplete }: MorseLockProps) => {
+export const MorseLock = ({ onComplete }: MorseLockProps) => {
   const [word, setWord] = useState('');
-  const [morseCode, setMorseCode] = useState('');
+  const [, setMorseCode] = useState('');
   const [userInput, setUserInput] = useState('');
   const [currentChar, setCurrentChar] = useState(0);
   const [attempts, setAttempts] = useState(0);

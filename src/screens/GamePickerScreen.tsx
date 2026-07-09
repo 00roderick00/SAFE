@@ -6,7 +6,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { MODULE_CONFIG, MODULE_CATEGORIES } from '../game/constants';
 import { getModulesByCategory } from '../game/modules';
 import { ModuleType } from '../types';
-import { getMiniGameComponent } from '../components/minigames';
+import { MiniGameHost } from '../components/minigames';
 
 export const GamePickerScreen = () => {
   const navigate = useNavigate();
@@ -44,18 +44,16 @@ export const GamePickerScreen = () => {
 
   const renderGamePreview = () => {
     if (!isPlaying) return null;
-
-    const Component = getMiniGameComponent(selectedType);
-    if (!Component) {
-      return (
-        <div className="text-center py-12">
-          <span className="text-6xl block mb-4">{selectedConfig?.icon}</span>
-          <p className="text-text-dim">Game preview coming soon</p>
-        </div>
-      );
-    }
-
-    return <Component difficulty={difficulty} seed={`preview-${selectedType}`} onComplete={handleGameComplete} />;
+    return (
+      <MiniGameHost
+        moduleType={selectedType}
+        moduleId={`preview-${selectedType}`}
+        difficulty={difficulty}
+        seed={`preview-${selectedType}`}
+        onComplete={handleGameComplete}
+        onFail={handleGameComplete}
+      />
+    );
   };
 
   // Order categories: arcade, puzzle, classic

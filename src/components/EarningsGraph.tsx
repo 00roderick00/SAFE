@@ -3,41 +3,13 @@
 
 import { useState, useRef, useCallback, useEffect, memo } from 'react';
 import { motion } from 'framer-motion';
-
-interface DataPoint {
-  timestamp: number;
-  value: number;
-}
+import type { DataPoint, TimeRange } from './earningsData';
 
 interface EarningsGraphProps {
   data: DataPoint[];
   height?: number;
   onScrub?: (point: DataPoint | null) => void;
   className?: string;
-}
-
-type TimeRange = '1D' | '1W' | '1M' | '3M' | 'YTD' | 'ALL';
-
-// Generate sample data for demo purposes
-export function generateSampleData(
-  days: number,
-  startValue: number = 1000,
-  volatility: number = 0.05
-): DataPoint[] {
-  const data: DataPoint[] = [];
-  const now = Date.now();
-  const msPerDay = 24 * 60 * 60 * 1000;
-  let value = startValue;
-
-  for (let i = days; i >= 0; i--) {
-    const timestamp = now - i * msPerDay;
-    // Random walk with slight upward bias
-    const change = (Math.random() - 0.48) * volatility * value;
-    value = Math.max(100, value + change);
-    data.push({ timestamp, value });
-  }
-
-  return data;
 }
 
 // SVG path from data points
@@ -323,38 +295,5 @@ export const TimeRangePills = memo(({ selected, onChange }: TimeRangePillsProps)
 });
 
 TimeRangePills.displayName = 'TimeRangePills';
-
-// Get data filtered by time range
-export function filterDataByRange(
-  data: DataPoint[],
-  range: TimeRange
-): DataPoint[] {
-  const now = Date.now();
-  const msPerDay = 24 * 60 * 60 * 1000;
-
-  let cutoff: number;
-  switch (range) {
-    case '1D':
-      cutoff = now - msPerDay;
-      break;
-    case '1W':
-      cutoff = now - 7 * msPerDay;
-      break;
-    case '1M':
-      cutoff = now - 30 * msPerDay;
-      break;
-    case '3M':
-      cutoff = now - 90 * msPerDay;
-      break;
-    case 'YTD':
-      cutoff = new Date(new Date().getFullYear(), 0, 1).getTime();
-      break;
-    case 'ALL':
-    default:
-      return data;
-  }
-
-  return data.filter((d) => d.timestamp >= cutoff);
-}
 
 export default EarningsGraph;

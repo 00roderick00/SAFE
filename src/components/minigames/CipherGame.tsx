@@ -10,7 +10,6 @@ const WORDS = ['SAFE', 'CODE', 'LOCK', 'HACK', 'KEY', 'PASS', 'DOOR', 'OPEN', 'S
 
 export const CipherGame = ({ difficulty, onComplete }: CipherGameProps) => {
   const [word, setWord] = useState('');
-  const [cipher, setCipher] = useState<Map<string, string>>(new Map());
   const [encodedWord, setEncodedWord] = useState('');
   const [input, setInput] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -38,8 +37,6 @@ export const CipherGame = ({ difficulty, onComplete }: CipherGameProps) => {
     for (let i = 0; i < alphabet.length; i++) {
       cipherMap.set(alphabet[i], shuffled[i]);
     }
-
-    setCipher(cipherMap);
 
     // Encode the word
     const encoded = selectedWord.split('').map(char => cipherMap.get(char) || char).join('');

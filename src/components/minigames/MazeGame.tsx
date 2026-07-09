@@ -16,7 +16,7 @@ const MAZE_SIZE = 9;
 export const MazeGame = ({ difficulty, onComplete }: MazeGameProps) => {
   const [maze, setMaze] = useState<number[][]>([]);
   const [player, setPlayer] = useState<Position>({ x: 1, y: 1 });
-  const [exit, setExit] = useState<Position>({ x: MAZE_SIZE - 2, y: MAZE_SIZE - 2 });
+  const [exit] = useState<Position>({ x: MAZE_SIZE - 2, y: MAZE_SIZE - 2 });
   const [won, setWon] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);

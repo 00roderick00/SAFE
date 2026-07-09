@@ -37,7 +37,7 @@ export const Keypad = ({ difficulty, onComplete }: MiniGameProps) => {
   const handleComplete = useCallback(
     (input: string) => {
       const timeSpent = startTime ? Date.now() - startTime : 0;
-      const score = scoreKeypadAttempt(config, input, timeSpent);
+      const score = scoreKeypadAttempt(config, input);
 
       onComplete({
         moduleId: 'keypad',
@@ -67,9 +67,7 @@ export const Keypad = ({ difficulty, onComplete }: MiniGameProps) => {
   };
 
   // Render key in 3x4 grid layout
-  const renderKey = (key: string, index: number) => {
-    const isPressed = userInput.includes(key) && userInput.lastIndexOf(key) === userInput.length - 1;
-
+  const renderKey = (key: string) => {
     return (
       <motion.button
         key={key}
@@ -123,7 +121,6 @@ export const Keypad = ({ difficulty, onComplete }: MiniGameProps) => {
               {Array.from({ length: sequenceLength }).map((_, i) => {
                 const digit = userInput[i];
                 const isCorrect = digit === sequence[i];
-                const isWrong = digit && !isCorrect;
 
                 return (
                   <div
@@ -152,11 +149,11 @@ export const Keypad = ({ difficulty, onComplete }: MiniGameProps) => {
 
       {/* Keypad Grid */}
       <div className="grid grid-cols-3 gap-3">
-        {keyOrder.slice(0, 9).map((key, i) => renderKey(key, i))}
+        {keyOrder.slice(0, 9).map((key) => renderKey(key))}
 
         {/* Bottom row: empty, 0, delete */}
         <div className="w-16 h-16" /> {/* Empty space */}
-        {renderKey(keyOrder[9], 9)}
+        {renderKey(keyOrder[9])}
         <motion.button
           onClick={handleDelete}
           disabled={showSequence || userInput.length === 0}

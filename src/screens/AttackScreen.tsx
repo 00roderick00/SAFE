@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, XCircle, ChevronRight, Coins, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, Coins, ArrowLeft } from 'lucide-react';
 import { Card, Button, ProgressBar } from '../components/ui';
-import { getMiniGameComponent, MiniGameErrorBoundary } from '../components/minigames';
+import { MiniGameHost } from '../components/minigames';
 
 import { usePlayerStore } from '../store/playerStore';
 import { useHeistStore } from '../store/heistStore';
@@ -134,11 +134,6 @@ export const AttackScreen = () => {
     navigate('/heist');
   };
 
-  const MiniGameComponent = useMemo(
-    () => (currentModule ? getMiniGameComponent(currentModule.type) : null),
-    [currentModule]
-  );
-
   const seed = useMemo(
     () =>
       currentTarget && currentModule
@@ -225,47 +220,15 @@ export const AttackScreen = () => {
               exit={{ opacity: 0, y: -20 }}
               className="w-full max-w-sm"
             >
-              {MiniGameComponent ? (
-                <MiniGameErrorBoundary
-                  key={seed}
-                  moduleType={currentModule.type}
-                  moduleId={currentModule.id}
-                  onFail={handleModuleComplete}
-                >
-                  <MiniGameComponent
-                    difficulty={currentModule.difficulty}
-                    seed={seed}
-                    onComplete={handleModuleComplete}
-                  />
-                </MiniGameErrorBoundary>
-              ) : (
-                <div className="text-center py-8">
-                  <AlertTriangle size={56} className="text-warning mx-auto mb-4" />
-                  <p className="font-display text-lg font-bold text-warning mb-2">
-                    Unknown module
-                  </p>
-                  <p className="text-sm text-text-dim mb-4">
-                    No minigame is registered for type
-                    <span className="text-text"> {currentModule.type}</span>.
-                    Counting as a failed lock.
-                  </p>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() =>
-                      handleModuleComplete({
-                        moduleId: currentModule.id,
-                        moduleType: currentModule.type,
-                        score: 0,
-                        passed: false,
-                        timeSpent: 0,
-                      })
-                    }
-                  >
-                    Continue
-                  </Button>
-                </div>
-              )}
+              <MiniGameHost
+                key={seed}
+                moduleType={currentModule.type}
+                moduleId={currentModule.id}
+                difficulty={currentModule.difficulty}
+                seed={seed}
+                onComplete={handleModuleComplete}
+                onFail={handleModuleComplete}
+              />
             </motion.div>
           )}
 

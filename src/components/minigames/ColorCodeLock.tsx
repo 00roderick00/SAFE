@@ -18,7 +18,7 @@ const COLORS = [
 export const ColorCodeLock = ({ difficulty, onComplete }: ColorCodeLockProps) => {
   const [code, setCode] = useState<number[]>([]);
   const [guess, setGuess] = useState<number[]>([]);
-  const [feedback, setFeedback] = useState<Array<'correct' | 'wrong-position' | 'wrong'>>([]);
+  const [, setFeedback] = useState<Array<'correct' | 'wrong-position' | 'wrong'>>([]);
   const [attempts, setAttempts] = useState<Array<{ guess: number[]; feedback: Array<'correct' | 'wrong-position' | 'wrong'> }>>([]);
   const [won, setWon] = useState(false);
   const [gameOver, setGameOver] = useState(false);

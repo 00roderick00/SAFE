@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { HomeScreen } from './screens/HomeScreen';
@@ -15,18 +14,10 @@ import { OnboardingScreen } from './screens/OnboardingScreen';
 import { usePlayerStore } from './store/playerStore';
 
 function App() {
-  const { onboardingCompleted } = usePlayerStore();
-  const [showOnboarding, setShowOnboarding] = useState(!onboardingCompleted);
+  const { onboardingCompleted, completeOnboarding } = usePlayerStore();
 
-  // Sync with store changes
-  useEffect(() => {
-    if (onboardingCompleted) {
-      setShowOnboarding(false);
-    }
-  }, [onboardingCompleted]);
-
-  if (showOnboarding) {
-    return <OnboardingScreen onComplete={() => setShowOnboarding(false)} />;
+  if (!onboardingCompleted) {
+    return <OnboardingScreen onComplete={completeOnboarding} />;
   }
 
   return (
