@@ -152,9 +152,6 @@ export const AttackScreen = () => {
   }
 
   const lastResult = moduleResults[moduleResults.length - 1];
-
-  const totalScore =
-    moduleResults.reduce((sum, r) => sum + r.score, 0) / (moduleResults.length || 1);
   const passedCount = moduleResults.filter((r) => r.passed).length;
 
   return (

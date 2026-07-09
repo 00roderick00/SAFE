@@ -3,7 +3,7 @@
 
 import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Target, AlertTriangle, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Shield, Target, AlertTriangle, TrendingUp } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import { formatDistanceToNow } from 'date-fns';
 import { haptics } from '../utils/haptics';

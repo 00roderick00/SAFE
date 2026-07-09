@@ -30,9 +30,6 @@ export const ProfileScreen = () => {
   const [avatar, setAvatar] = useState(AVATARS[0]);
 
   const securityScore = calculateSecurityScore(securityLoadout);
-  const winRate = successfulHeists + successfulDefenses > 0
-    ? Math.round((successfulHeists / (successfulHeists + successfulDefenses)) * 100)
-    : 0;
 
   // Check achievements on mount
   checkAchievements({

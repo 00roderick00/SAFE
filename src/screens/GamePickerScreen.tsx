@@ -30,7 +30,7 @@ export const GamePickerScreen = () => {
     setIsPlaying(true);
   };
 
-  const handleGameComplete = (_result: import('../types').MiniGameResult) => {
+  const handleGameComplete = () => {
     setIsPlaying(false);
   };
 

@@ -8,8 +8,6 @@ import {
   ShieldCheck,
   History,
 } from 'lucide-react';
-import { useGameStore } from '../store/gameStore';
-
 interface LayoutProps {
   children: ReactNode;
 }
@@ -24,7 +22,6 @@ const navItems = [
 
 export const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
-  const unreadCount = useGameStore((state) => state.getUnreadCount());
 
   // Hide nav on attack screen
   const hideNav = location.pathname.startsWith('/attack');

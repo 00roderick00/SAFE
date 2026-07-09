@@ -4,7 +4,6 @@ import {
   Shield,
   CheckCircle,
   XCircle,
-  Coins,
   Clock,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';

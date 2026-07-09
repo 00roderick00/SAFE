@@ -207,7 +207,6 @@ export const HeistScreen = () => {
             {botSafes.map((safe, index) => {
               const canAfford = safe.attackFee <= safeBalance;
               const wasRecentlyAttacked = recentlyAttacked.includes(safe.id);
-              const potentialLoot = calculateLoot(safe.safeBalance);
 
               return (
                 <motion.div

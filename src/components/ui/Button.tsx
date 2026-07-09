@@ -1,4 +1,4 @@
-import { forwardRef, ButtonHTMLAttributes } from 'react';
+import { forwardRef } from 'react';
 import { motion, HTMLMotionProps } from 'framer-motion';
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'clean';

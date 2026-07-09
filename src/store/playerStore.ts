@@ -19,7 +19,7 @@ interface PlayerStore extends PlayerState {
   setModuleDifficulty: (index: number, difficulty: number) => void;
   setModuleType: (index: number, type: ModuleType) => void;
   purchaseInsurance: (policy: InsurancePolicy) => void;
-  useInsuranceClaim: () => void;
+  consumeInsuranceClaim: () => void;
   clearInsurance: () => void;
   enterHeistMode: () => void;
   exitHeistMode: () => void;
@@ -173,7 +173,7 @@ export const usePlayerStore = create<PlayerStore>()(
           insurancePolicy: policy,
         })),
 
-      useInsuranceClaim: () =>
+      consumeInsuranceClaim: () =>
         set((state) => {
           if (!state.insurancePolicy) return state;
           const newClaims = state.insurancePolicy.claimsRemaining - 1;

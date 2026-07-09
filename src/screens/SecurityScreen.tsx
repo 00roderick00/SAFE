@@ -3,7 +3,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, TrendingUp, TrendingDown, Lock, Shield, ChevronRight } from 'lucide-react';
+import { ArrowLeft, TrendingUp, TrendingDown, Shield, ChevronRight } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { calculateEconomyStats } from '../game/economy';
 import { MODULE_CONFIG } from '../game/constants';

@@ -196,7 +196,6 @@ export const SafeGraphic = ({
 export const TargetSafeGraphic = ({
   size = 80,
   difficulty = 'tricky',
-  ownerName
 }: {
   size?: number;
   difficulty?: 'soft' | 'tricky' | 'brutal';

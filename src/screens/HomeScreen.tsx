@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Shield, AlertTriangle, Clock, Target, TrendingUp, TrendingDown } from 'lucide-react';
+import { Settings, Shield, AlertTriangle, Target } from 'lucide-react';
 import { ActivityFeed } from '../components/ActivityFeed';
 import { SafeGraphic } from '../components/SafeGraphic';
 import { EarningsGraph, TimeRangePills, generateSampleData, filterDataByRange } from '../components/EarningsGraph';
@@ -28,9 +28,8 @@ export const HomeScreen = () => {
     heistModeExpiresAt,
     exitHeistMode,
     enterHeistMode,
-    totalEarnings,
     addEarnings,
-    useInsuranceClaim,
+    consumeInsuranceClaim,
   } = usePlayerStore();
 
   const stats = calculateEconomyStats(safeBalance, securityLoadout);
@@ -120,7 +119,7 @@ export const HomeScreen = () => {
           usePlayerStore.getState().recordLoss(defenseResult.lootLost);
           if (defenseResult.insurancePayout > 0) {
             addEarnings(defenseResult.insurancePayout);
-            useInsuranceClaim();
+            consumeInsuranceClaim();
             addNotification({
               type: 'defense_fail',
               title: 'Safe Breached — Insurance Paid Out',
@@ -144,7 +143,7 @@ export const HomeScreen = () => {
     addDefenseEvent,
     addNotification,
     addEarnings,
-    useInsuranceClaim,
+    consumeInsuranceClaim,
   ]);
 
   // Refresh bot safes on mount

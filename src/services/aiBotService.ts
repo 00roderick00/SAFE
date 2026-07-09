@@ -2,7 +2,7 @@
 // Can connect to Claude API or use local heuristics as fallback
 
 import { ModuleType, SecurityModule, SecurityLoadout, BotSafe } from '../types';
-import { MODULE_CONFIG, BOT_NAMES, ECONOMY, MODULE_TYPES_BY_CATEGORY, ALL_MODULE_TYPES } from '../game/constants';
+import { MODULE_CONFIG, MODULE_TYPES_BY_CATEGORY, ALL_MODULE_TYPES } from '../game/constants';
 import {
   calculateSecurityScore,
   calculateAttackFee,
@@ -214,9 +214,16 @@ Respond with ONLY valid JSON, no other text.`;
   }
 
   // Parse AI response into strategy
-  private parseAIResponse(data: any): BotStrategy {
+  private parseAIResponse(data: unknown): BotStrategy {
     try {
-      const content = data.content?.[0]?.text || data.choices?.[0]?.message?.content;
+      const payload = data as {
+        content?: Array<{ text?: string }>;
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const content =
+        payload.content?.[0]?.text ||
+        payload.choices?.[0]?.message?.content ||
+        '';
       const parsed = JSON.parse(content);
 
       return {

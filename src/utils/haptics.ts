@@ -26,7 +26,7 @@ export function haptic(type: HapticType = 'light'): void {
   try {
     const pattern = PATTERNS[type];
     navigator.vibrate(pattern);
-  } catch (e) {
+  } catch {
     // Silently fail - haptics are not critical
   }
 }
@@ -59,7 +59,7 @@ export const haptics = {
     if (!supportsHaptics()) return;
     try {
       navigator.vibrate(pattern);
-    } catch (e) {
+    } catch {
       // Silently fail
     }
   },
@@ -69,7 +69,7 @@ export const haptics = {
     if (!supportsHaptics()) return;
     try {
       navigator.vibrate(0);
-    } catch (e) {
+    } catch {
       // Silently fail
     }
   },

@@ -3,8 +3,6 @@ import { Shield, Lock, AlertTriangle, Clock } from 'lucide-react';
 import { Card, CircularProgress } from '../ui';
 import { usePlayerStore } from '../../store/playerStore';
 import { calculateEconomyStats } from '../../game/economy';
-import { formatDistanceToNow } from 'date-fns';
-
 export const SafeCard = () => {
   const {
     safeBalance,

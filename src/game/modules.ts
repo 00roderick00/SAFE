@@ -206,7 +206,7 @@ export function scorePatternAttempt(
 export function scoreKeypadAttempt(
   config: KeypadConfig,
   userSequence: string,
-  timeSpent: number
+  _timeSpent: number
 ): number {
   const correctDigits = userSequence.split('').reduce((count, digit, index) => {
     return count + (config.sequence[index] === digit ? 1 : 0);

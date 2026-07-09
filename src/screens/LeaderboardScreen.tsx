@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, RefreshCw, Trophy, Target, Shield } from 'lucide-react';
@@ -13,7 +13,7 @@ export const LeaderboardScreen = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { leaderboard, refreshLeaderboard } = useSocialStore();
-  const { username, safeBalance, successfulHeists, successfulDefenses } = usePlayerStore();
+  const { username, safeBalance, successfulHeists } = usePlayerStore();
 
   // Add player to leaderboard
   const playerEntry = {

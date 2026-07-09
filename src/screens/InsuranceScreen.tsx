@@ -5,12 +5,11 @@ import {
   Clock,
   CheckCircle,
   AlertTriangle,
-  Coins,
   Info,
 } from 'lucide-react';
-import { formatDistanceToNow, addSeconds } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { PageHeader } from '../components/Layout';
-import { Card, Button, ConfirmModal, CircularProgress } from '../components/ui';
+import { Card, ConfirmModal, CircularProgress } from '../components/ui';
 import { usePlayerStore } from '../store/playerStore';
 import { calculateInsurancePremium, calculateEconomyStats } from '../game/economy';
 import { INSURANCE_PLANS, ECONOMY } from '../game/constants';
@@ -25,7 +24,6 @@ export const InsuranceScreen = () => {
     securityLoadout,
     insurancePolicy,
     purchaseInsurance,
-    clearInsurance,
   } = usePlayerStore();
 
   const stats = calculateEconomyStats(safeBalance, securityLoadout);

@@ -2,14 +2,10 @@
 // Now with AI-driven bot strategies
 
 import { BotSafe, SecurityModule, SecurityLoadout, ModuleType } from '../types';
-import { BOT_NAMES, ECONOMY, MODULE_CONFIG, ALL_MODULE_TYPES } from './constants';
+import { ECONOMY, MODULE_CONFIG, ALL_MODULE_TYPES } from './constants';
 import {
   calculateSecurityScore,
-  calculateAttackFee,
-  calculateLoot,
   calculateSuccessProbability,
-  getDifficultyBand,
-  getLootRange,
 } from './economy';
 import { aiBotService } from '../services/aiBotService';
 
@@ -64,53 +60,6 @@ function generateLoadout(targetDifficulty: number, preferredTypes?: ModuleType[]
 
   loadout.effectiveScore = calculateSecurityScore(loadout);
   return loadout;
-}
-
-/**
- * Generate a bot safe for the target feed
- */
-export function generateBotSafe(
-  playerRating: number,
-  difficultyBias: 'easy' | 'mixed' | 'hard' = 'mixed'
-): BotSafe {
-  // Pick a random bot name
-  const ownerName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-
-  // Generate safe value (varied distribution)
-  const baseValue = 200 + Math.random() * 3000;
-  const valueMultiplier = difficultyBias === 'hard' ? 1.5 : difficultyBias === 'easy' ? 0.7 : 1;
-  const safeBalance = Math.round(baseValue * valueMultiplier);
-
-  // Generate difficulty based on bias and player rating
-  let targetDifficulty: number;
-  switch (difficultyBias) {
-    case 'easy':
-      targetDifficulty = 0.2 + Math.random() * 0.3;
-      break;
-    case 'hard':
-      targetDifficulty = 0.6 + Math.random() * 0.4;
-      break;
-    default:
-      targetDifficulty = 0.3 + Math.random() * 0.5;
-  }
-
-  const loadout = generateLoadout(targetDifficulty);
-  const securityScore = loadout.effectiveScore;
-
-  const attackFee = calculateAttackFee(safeBalance, securityScore);
-
-  return {
-    id: generateId(),
-    ownerName,
-    safeBalance,
-    securityScore,
-    securityLoadout: loadout,
-    difficultyBand: getDifficultyBand(securityScore),
-    lootRange: getLootRange(safeBalance),
-    attackFee,
-    lastAttackedAt: null,
-    attackCooldownUntil: null,
-  };
 }
 
 /**
