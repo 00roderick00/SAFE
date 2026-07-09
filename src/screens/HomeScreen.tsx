@@ -30,6 +30,7 @@ export const HomeScreen = () => {
     enterHeistMode,
     totalEarnings,
     addEarnings,
+    useInsuranceClaim,
   } = usePlayerStore();
 
   const stats = calculateEconomyStats(safeBalance, securityLoadout);
@@ -98,8 +99,12 @@ export const HomeScreen = () => {
     if (!heistModeActive) return;
 
     const interval = setInterval(() => {
-      const securityScore = usePlayerStore.getState().securityLoadout.effectiveScore;
-      const defenseResult = simulateDefense(safeBalance, securityScore);
+      const state = usePlayerStore.getState();
+      const defenseResult = simulateDefense(
+        state.safeBalance,
+        state.securityLoadout,
+        state.insurancePolicy
+      );
 
       if (defenseResult) {
         addDefenseEvent(defenseResult);
@@ -113,17 +118,34 @@ export const HomeScreen = () => {
           });
         } else {
           usePlayerStore.getState().recordLoss(defenseResult.lootLost);
-          addNotification({
-            type: 'defense_fail',
-            title: 'Safe Breached!',
-            message: `${defenseResult.attackerName} breached your safe and stole ${defenseResult.lootLost} tokens.`,
-          });
+          if (defenseResult.insurancePayout > 0) {
+            addEarnings(defenseResult.insurancePayout);
+            useInsuranceClaim();
+            addNotification({
+              type: 'defense_fail',
+              title: 'Safe Breached — Insurance Paid Out',
+              message: `${defenseResult.attackerName} breached your safe. You lost ${defenseResult.lootLost} tokens; insurance reimbursed ${defenseResult.insurancePayout}.`,
+            });
+          } else {
+            addNotification({
+              type: 'defense_fail',
+              title: 'Safe Breached!',
+              message: `${defenseResult.attackerName} breached your safe and stole ${defenseResult.lootLost} tokens.`,
+            });
+          }
         }
       }
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [heistModeActive, safeBalance, simulateDefense, addDefenseEvent, addNotification, addEarnings]);
+  }, [
+    heistModeActive,
+    simulateDefense,
+    addDefenseEvent,
+    addNotification,
+    addEarnings,
+    useInsuranceClaim,
+  ]);
 
   // Refresh bot safes on mount
   useEffect(() => {

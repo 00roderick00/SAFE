@@ -2,9 +2,10 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { BotSafe, AttackResult, DefenseEvent, GameNotification } from '../types';
+import { BotSafe, AttackResult, DefenseEvent, GameNotification, InsurancePolicy, SecurityLoadout } from '../types';
 import { generateBotFeed, generatePracticeSafe } from '../game/matchmaking';
 import { ECONOMY } from '../game/constants';
+import { calculateAttackFee, processInsuranceClaim } from '../game/economy';
 
 interface GameStore {
   // State
@@ -29,7 +30,11 @@ interface GameStore {
   getUnreadCount: () => number;
 
   // Simulated defense events (for bot attacks on player)
-  simulateDefense: (playerBalance: number, playerSecurityScore: number) => DefenseEvent | null;
+  simulateDefense: (
+    playerBalance: number,
+    playerLoadout: SecurityLoadout,
+    insurancePolicy: InsurancePolicy | null
+  ) => DefenseEvent | null;
 }
 
 export const useGameStore = create<GameStore>()(
@@ -114,42 +119,66 @@ export const useGameStore = create<GameStore>()(
         return get().notifications.filter((n) => !n.read).length;
       },
 
-      simulateDefense: (playerBalance, playerSecurityScore) => {
-        // Random chance of simulated attack (5% when checked)
+      simulateDefense: (playerBalance, playerLoadout, insurancePolicy) => {
+        // Random chance of an incoming attack this tick.
         if (Math.random() > 0.05) return null;
 
-        // Determine if attack succeeds based on player's security
+        // Resolve deterministically against the actual loadout: for each
+        // module, an attacker of ability `attackerSkill` beats the lock
+        // iff attackerSkill > lock.difficulty. Attack succeeds only if
+        // ALL locks are beaten (matches the player-side all-or-nothing
+        // model in heistStore.completeAttack).
         const attackerSkill = 0.3 + Math.random() * 0.5;
-        const defenseStrength = playerSecurityScore / 100;
-        const attackSucceeds = attackerSkill > defenseStrength;
+        const moduleResults = playerLoadout.modules.map((module) => {
+          const defended = attackerSkill <= module.difficulty;
+          return {
+            moduleId: module.id,
+            attackerScore: Number(Math.min(1, attackerSkill / Math.max(0.01, module.difficulty)).toFixed(3)),
+            defended,
+          };
+        });
 
+        const attackerBreached = moduleResults.length > 0 && moduleResults.every((r) => !r.defended);
+        const playerSecurityScore = playerLoadout.effectiveScore;
         const attackerName = 'ShadowBot' + Math.floor(Math.random() * 1000);
-        const feeAmount = Math.round(Math.sqrt(playerBalance) * (0.8 + 1.6 / (1 + playerSecurityScore)));
+        const feeAmount = calculateAttackFee(playerBalance, playerSecurityScore);
 
-        if (attackSucceeds) {
-          const lootLost = Math.round(playerBalance * ECONOMY.lootFraction);
+        if (attackerBreached) {
+          const lootLost = Math.min(
+            Math.round(playerBalance * ECONOMY.lootFraction),
+            ECONOMY.lootCap
+          );
+
+          let insurancePayout = 0;
+          if (insurancePolicy) {
+            const claim = processInsuranceClaim(insurancePolicy, lootLost);
+            if (claim.policyValid) {
+              insurancePayout = claim.payout;
+            }
+          }
+
           return {
             id: `defense-${Date.now()}`,
             timestamp: Date.now(),
             attackerName,
-            success: false, // from defender's perspective, this is a failed defense
-            moduleResults: [],
+            success: false, // defender failed
+            moduleResults,
             feeEarned: 0,
             lootLost,
-            insurancePayout: 0,
-          };
-        } else {
-          return {
-            id: `defense-${Date.now()}`,
-            timestamp: Date.now(),
-            attackerName,
-            success: true, // defender succeeded
-            moduleResults: [],
-            feeEarned: feeAmount,
-            lootLost: 0,
-            insurancePayout: 0,
+            insurancePayout,
           };
         }
+
+        return {
+          id: `defense-${Date.now()}`,
+          timestamp: Date.now(),
+          attackerName,
+          success: true, // defender held
+          moduleResults,
+          feeEarned: feeAmount,
+          lootLost: 0,
+          insurancePayout: 0,
+        };
       },
     }),
     {
