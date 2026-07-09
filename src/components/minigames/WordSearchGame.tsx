@@ -16,7 +16,8 @@ export const WordSearchGame = ({ difficulty, onComplete }: WordSearchGameProps) 
   const [selected, setSelected] = useState<{ row: number; col: number }[]>([]);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(45);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const targetWords = Math.floor(2 + difficulty * 2);
 

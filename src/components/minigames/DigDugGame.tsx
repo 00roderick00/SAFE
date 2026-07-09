@@ -22,7 +22,8 @@ export const DigDugGame = ({ difficulty, onComplete }: DigDugGameProps) => {
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(25);
   const [pumping, setPumping] = useState<number | null>(null);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const targetScore = Math.floor(2 + difficulty * 4);
 
   // Initialize enemies

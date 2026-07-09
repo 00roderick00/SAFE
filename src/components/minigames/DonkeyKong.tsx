@@ -26,7 +26,8 @@ export const DonkeyKong = ({ difficulty, onComplete }: DonkeyKongProps) => {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(20);
   const [gameOver, setGameOver] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const barrelId = useRef(0);
 
   // Spawn barrels

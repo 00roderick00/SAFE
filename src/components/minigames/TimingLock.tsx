@@ -10,7 +10,8 @@ export const TimingLock = ({ difficulty, onComplete }: MiniGameProps) => {
   const [attempts, setAttempts] = useState(0);
   const [lastHit, setLastHit] = useState<number | null>(null);
   const [result, setResult] = useState<'success' | 'fail' | null>(null);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const animationRef = useRef<number | null>(null);
 
   const { rotationSpeed, targetZoneSize, attemptsAllowed, targetPosition } = config;

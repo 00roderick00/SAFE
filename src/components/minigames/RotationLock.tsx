@@ -13,7 +13,8 @@ export const RotationLock = ({ difficulty, onComplete }: RotationLockProps) => {
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(35);
   const [moves, setMoves] = useState(0);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const numRings = Math.floor(3 + difficulty);
   const segments = 8; // Each ring has 8 positions

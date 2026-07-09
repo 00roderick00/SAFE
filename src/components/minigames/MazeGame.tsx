@@ -21,7 +21,8 @@ export const MazeGame = ({ difficulty, onComplete }: MazeGameProps) => {
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);
   const [moves, setMoves] = useState(0);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   // Generate maze using recursive backtracking
   useEffect(() => {

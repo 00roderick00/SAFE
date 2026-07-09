@@ -13,7 +13,8 @@ export const SliderLock = ({ difficulty, onComplete }: SliderLockProps) => {
   const [won, setWon] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(45);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const gridSize = 3;
   const totalTiles = gridSize * gridSize;

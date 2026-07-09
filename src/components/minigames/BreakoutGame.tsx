@@ -35,7 +35,8 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(35);
   const [gameStarted, setGameStarted] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const paddleRef = useRef(paddleX);
   const animationRef = useRef<number | null>(null);
   const totalBricks = BRICK_ROWS * BRICK_COLS;

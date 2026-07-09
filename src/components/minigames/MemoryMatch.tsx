@@ -25,7 +25,8 @@ export const MemoryMatch = ({ difficulty, onComplete }: MemoryMatchProps) => {
   const [timeLeft, setTimeLeft] = useState(30);
   const [gameOver, setGameOver] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   // Initialize cards
   useEffect(() => {

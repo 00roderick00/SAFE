@@ -23,7 +23,8 @@ export const ColorCodeLock = ({ difficulty, onComplete }: ColorCodeLockProps) =>
   const [won, setWon] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const codeLength = Math.floor(3 + difficulty);
   const maxAttempts = Math.floor(8 - difficulty * 2);

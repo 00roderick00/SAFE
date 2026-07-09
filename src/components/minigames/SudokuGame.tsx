@@ -16,7 +16,8 @@ export const SudokuGame = ({ difficulty, onComplete }: SudokuGameProps) => {
   const [filled, setFilled] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(40);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const blanks = Math.floor(6 + difficulty * 4); // Number of cells to fill
   const maxErrors = 3;

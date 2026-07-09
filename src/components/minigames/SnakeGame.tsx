@@ -24,7 +24,8 @@ export const SnakeGame = ({ difficulty, onComplete }: SnakeGameProps) => {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(25);
   const [gameStarted, setGameStarted] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const directionRef = useRef(direction);
   const targetScore = Math.floor(3 + difficulty * 5);
 

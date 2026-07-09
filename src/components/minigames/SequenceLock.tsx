@@ -15,7 +15,8 @@ export const SequenceLock = ({ difficulty, onComplete }: SequenceLockProps) => {
   const [round, setRound] = useState(1);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(45);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const gridSize = 9; // 3x3 grid
   const sequenceLength = Math.floor(3 + difficulty * 2);

@@ -40,7 +40,8 @@ export const TetrisGame = ({ difficulty, onComplete }: TetrisGameProps) => {
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(50);
   const [gameStarted, setGameStarted] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const targetLines = Math.floor(2 + difficulty * 4);
 
   // Initialize board

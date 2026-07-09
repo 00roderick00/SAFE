@@ -23,7 +23,8 @@ export const PacmanGame = ({ difficulty, onComplete }: PacmanGameProps) => {
   const [totalDots, setTotalDots] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(15);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Initialize dots

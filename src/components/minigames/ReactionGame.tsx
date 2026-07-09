@@ -16,7 +16,8 @@ export const ReactionGame = ({ difficulty, onComplete }: ReactionGameProps) => {
   const [goTime, setGoTime] = useState<number>(0);
   const [lastReaction, setLastReaction] = useState<number | null>(null);
   const [gameOver, setGameOver] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const timerRef = useRef<TimeoutHandle | null>(null);
 
   const totalRounds = Math.floor(3 + difficulty * 2);

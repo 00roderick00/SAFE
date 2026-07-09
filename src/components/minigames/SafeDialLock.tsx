@@ -15,7 +15,8 @@ export const SafeDialLock = ({ difficulty, onComplete }: SafeDialLockProps) => {
   const [won, setWon] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(40);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const numSteps = Math.floor(3 + difficulty);
   const dialNumbers = 40; // 0-39 on the dial

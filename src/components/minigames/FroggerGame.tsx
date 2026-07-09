@@ -28,7 +28,8 @@ export const FroggerGame = ({ difficulty, onComplete }: FroggerGameProps) => {
   const [lives, setLives] = useState(3);
   const [timeLeft, setTimeLeft] = useState(20);
   const [gameOver, setGameOver] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const carId = useRef(0);
 
   // Spawn cars

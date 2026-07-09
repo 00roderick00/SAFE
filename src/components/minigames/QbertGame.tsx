@@ -20,7 +20,8 @@ export const QbertGame = ({ difficulty, onComplete }: QbertGameProps) => {
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   // Total tiles in pyramid: 1+2+3+4+5+6+7 = 28
   const totalTiles = (PYRAMID_ROWS * (PYRAMID_ROWS + 1)) / 2;

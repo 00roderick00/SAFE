@@ -27,7 +27,8 @@ export const GalagaGame = ({ difficulty, onComplete }: GalagaGameProps) => {
   const [timeLeft, setTimeLeft] = useState(25);
   const [wave, setWave] = useState(1);
   const [gameStarted, setGameStarted] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const targetScore = Math.floor(8 + difficulty * 12);
 
   // Initialize enemies

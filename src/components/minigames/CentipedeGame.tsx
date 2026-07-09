@@ -32,7 +32,8 @@ export const CentipedeGame = ({ difficulty, onComplete }: CentipedeGameProps) =>
   const [timeLeft, setTimeLeft] = useState(15);
   const [gameOver, setGameOver] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const bulletId = useRef(0);
 
   // Initialize centipede

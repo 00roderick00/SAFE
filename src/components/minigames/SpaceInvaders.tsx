@@ -31,7 +31,8 @@ export const SpaceInvaders = ({ difficulty, onComplete }: SpaceInvadersProps) =>
   const [totalAliens, setTotalAliens] = useState(0);
   const [timeLeft, setTimeLeft] = useState(15);
   const [gameOver, setGameOver] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const bulletId = useRef(0);
 
   // Initialize aliens

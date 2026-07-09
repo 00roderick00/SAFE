@@ -65,7 +65,8 @@ export const NumSequenceGame = ({ difficulty, onComplete }: NumSequenceGameProps
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(45);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const totalRounds = Math.floor(3 + difficulty * 2);
 

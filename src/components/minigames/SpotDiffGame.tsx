@@ -21,7 +21,8 @@ export const SpotDiffGame = ({ difficulty, onComplete }: SpotDiffGameProps) => {
   const [mistakes, setMistakes] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(35);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const gridSize = 4;
   const differences = Math.floor(3 + difficulty * 2);

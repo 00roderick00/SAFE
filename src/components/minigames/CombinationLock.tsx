@@ -14,7 +14,8 @@ export const CombinationLock = ({ difficulty, onComplete }: CombinationLockProps
   const [attempts, setAttempts] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const codeLength = Math.floor(3 + difficulty);
   const maxAttempts = Math.max(2, 5 - Math.floor(difficulty * 2));

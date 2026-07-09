@@ -21,7 +21,8 @@ export const JigsawGame = ({ difficulty, onComplete }: JigsawGameProps) => {
   const [correctCount, setCorrectCount] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(35);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const totalPieces = GRID_SIZE * GRID_SIZE;
 
   const colors = [

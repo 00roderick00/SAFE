@@ -19,7 +19,8 @@ export const CipherGame = ({ difficulty, onComplete }: CipherGameProps) => {
   const [currentRound, setCurrentRound] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(50);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const totalRounds = Math.floor(2 + difficulty * 2);
   const maxHints = 2;

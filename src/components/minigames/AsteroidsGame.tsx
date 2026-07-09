@@ -38,7 +38,8 @@ export const AsteroidsGame = ({ difficulty, onComplete }: AsteroidsGameProps) =>
   const [totalAsteroids, setTotalAsteroids] = useState(0);
   const [timeLeft, setTimeLeft] = useState(20);
   const [gameOver, setGameOver] = useState(false);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
   const bulletId = useRef(0);
   const asteroidId = useRef(0);
 

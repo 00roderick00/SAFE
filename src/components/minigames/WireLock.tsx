@@ -20,7 +20,8 @@ export const WireLock = ({ difficulty, onComplete }: WireLockProps) => {
   const [connectedCount, setConnectedCount] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const numWires = Math.floor(4 + difficulty * 2);
   const colors = ['#ff4444', '#ffb800', '#00d67a', '#00ccff', '#a855f7', '#ff69b4', '#ffffff', '#888888'];

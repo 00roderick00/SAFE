@@ -20,7 +20,8 @@ export const WordScramble = ({ difficulty, onComplete }: WordScrambleProps) => {
   const [timeLeft, setTimeLeft] = useState(30);
   const [gameOver, setGameOver] = useState(false);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const scrambleWord = (word: string): string => {
     const arr = word.split('');

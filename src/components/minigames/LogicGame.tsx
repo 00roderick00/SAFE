@@ -63,7 +63,8 @@ export const LogicGame = ({ difficulty, onComplete }: LogicGameProps) => {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
-  const startTime = useRef(Date.now());
+  const startTime = useRef<number>(0);
+  useEffect(() => { startTime.current = Date.now(); }, []);
 
   const totalPuzzles = Math.floor(3 + difficulty * 2);
 
