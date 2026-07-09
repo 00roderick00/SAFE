@@ -6,53 +6,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { MODULE_CONFIG, MODULE_CATEGORIES } from '../game/constants';
 import { getModulesByCategory } from '../game/modules';
 import { ModuleType } from '../types';
-
-// Import all mini-games for preview
-import {
-  // Original Arcade
-  PacmanGame,
-  SpaceInvaders,
-  FroggerGame,
-  DonkeyKong,
-  CentipedeGame,
-  AsteroidsGame,
-  // New Arcade
-  SnakeGame,
-  BreakoutGame,
-  TetrisGame,
-  GalagaGame,
-  DigDugGame,
-  QbertGame,
-  // Original Puzzle
-  QuickMath,
-  WordScramble,
-  MemoryMatch,
-  // New Puzzle
-  SudokuGame,
-  JigsawGame,
-  WordSearchGame,
-  LogicGame,
-  MazeGame,
-  SpotDiffGame,
-  ReactionGame,
-  NumSequenceGame,
-  CipherGame,
-  // Original Classic
-  PatternLock,
-  Keypad,
-  TimingLock,
-  // New Classic
-  CombinationLock,
-  SequenceLock,
-  SliderLock,
-  RotationLock,
-  WireLock,
-  FingerprintLock,
-  MorseLock,
-  ColorCodeLock,
-  SafeDialLock,
-} from '../components/minigames';
-import { generateMiniGameConfig } from '../game/modules';
+import { getMiniGameComponent } from '../components/minigames';
 
 export const GamePickerScreen = () => {
   const navigate = useNavigate();
@@ -76,7 +30,7 @@ export const GamePickerScreen = () => {
     setIsPlaying(true);
   };
 
-  const handleGameComplete = () => {
+  const handleGameComplete = (_result: import('../types').MiniGameResult) => {
     setIsPlaying(false);
   };
 
@@ -91,110 +45,17 @@ export const GamePickerScreen = () => {
   const renderGamePreview = () => {
     if (!isPlaying) return null;
 
-    const mockModule = {
-      id: 'preview',
-      type: selectedType,
-      difficulty,
-      weight: 1,
-      name: selectedConfig?.name || 'Game',
-      description: selectedConfig?.description || '',
-    };
-
-    const props = { difficulty, onComplete: handleGameComplete };
-
-    switch (selectedType) {
-      // Original Arcade Games
-      case 'pacman':
-        return <PacmanGame {...props} />;
-      case 'spaceinvaders':
-        return <SpaceInvaders {...props} />;
-      case 'frogger':
-        return <FroggerGame {...props} />;
-      case 'donkeykong':
-        return <DonkeyKong {...props} />;
-      case 'centipede':
-        return <CentipedeGame {...props} />;
-      case 'asteroids':
-        return <AsteroidsGame {...props} />;
-
-      // New Arcade Games
-      case 'snake':
-        return <SnakeGame {...props} />;
-      case 'breakout':
-        return <BreakoutGame {...props} />;
-      case 'tetris':
-        return <TetrisGame {...props} />;
-      case 'galaga':
-        return <GalagaGame {...props} />;
-      case 'digdug':
-        return <DigDugGame {...props} />;
-      case 'qbert':
-        return <QbertGame {...props} />;
-
-      // Original Puzzle Games
-      case 'quickmath':
-        return <QuickMath {...props} />;
-      case 'wordscramble':
-        return <WordScramble {...props} />;
-      case 'memorymatch':
-        return <MemoryMatch {...props} />;
-
-      // New Puzzle Games
-      case 'sudoku':
-        return <SudokuGame {...props} />;
-      case 'jigsaw':
-        return <JigsawGame {...props} />;
-      case 'wordsearch':
-        return <WordSearchGame {...props} />;
-      case 'logic':
-        return <LogicGame {...props} />;
-      case 'maze':
-        return <MazeGame {...props} />;
-      case 'spotdiff':
-        return <SpotDiffGame {...props} />;
-      case 'reaction':
-        return <ReactionGame {...props} />;
-      case 'numsequence':
-        return <NumSequenceGame {...props} />;
-      case 'cipher':
-        return <CipherGame {...props} />;
-
-      // Original Classic Locks
-      case 'pattern':
-        return <PatternLock config={generateMiniGameConfig(mockModule) as any} onComplete={handleGameComplete} />;
-      case 'keypad':
-        return <Keypad config={generateMiniGameConfig(mockModule) as any} onComplete={handleGameComplete} />;
-      case 'timing':
-        return <TimingLock config={generateMiniGameConfig(mockModule) as any} onComplete={handleGameComplete} />;
-
-      // New Classic Locks
-      case 'combination':
-        return <CombinationLock {...props} />;
-      case 'sequence':
-        return <SequenceLock {...props} />;
-      case 'slider':
-        return <SliderLock {...props} />;
-      case 'rotation':
-        return <RotationLock {...props} />;
-      case 'wire':
-        return <WireLock {...props} />;
-      case 'fingerprint':
-        return <FingerprintLock {...props} />;
-      case 'morse':
-        return <MorseLock {...props} />;
-      case 'colorcode':
-        return <ColorCodeLock {...props} />;
-      case 'safedial':
-        return <SafeDialLock {...props} />;
-
-      default:
-        return (
-          <div className="text-center py-12">
-            <span className="text-6xl block mb-4">{selectedConfig?.icon}</span>
-            <p className="text-text-dim">Game preview coming soon</p>
-          </div>
-        );
+    const Component = getMiniGameComponent(selectedType);
+    if (!Component) {
+      return (
+        <div className="text-center py-12">
+          <span className="text-6xl block mb-4">{selectedConfig?.icon}</span>
+          <p className="text-text-dim">Game preview coming soon</p>
+        </div>
+      );
     }
+
+    return <Component difficulty={difficulty} seed={`preview-${selectedType}`} onComplete={handleGameComplete} />;
   };
 
   // Order categories: arcade, puzzle, classic

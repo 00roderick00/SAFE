@@ -1,14 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { PatternLockConfig, MiniGameResult } from '../../types';
-import { scorePatternAttempt } from '../../game/modules';
+import { MiniGameProps } from '../../types';
+import { generatePatternConfig, scorePatternAttempt } from '../../game/modules';
 
-interface PatternLockProps {
-  config: PatternLockConfig;
-  onComplete: (result: MiniGameResult) => void;
-}
-
-export const PatternLock = ({ config, onComplete }: PatternLockProps) => {
+export const PatternLock = ({ difficulty, onComplete }: MiniGameProps) => {
+  const config = useMemo(() => generatePatternConfig(difficulty), [difficulty]);
   const [userPattern, setUserPattern] = useState<number[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [showPattern, setShowPattern] = useState(true);

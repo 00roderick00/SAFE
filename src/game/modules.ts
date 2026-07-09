@@ -5,7 +5,6 @@ import {
   PatternLockConfig,
   KeypadConfig,
   TimingLockConfig,
-  MiniGameConfig,
 } from '../types';
 import { MODULE_CONFIG } from './constants';
 
@@ -19,9 +18,9 @@ function lerp(min: number, max: number, t: number): number {
 /**
  * Generate Pattern Lock configuration based on difficulty
  */
-export function generatePatternConfig(module: SecurityModule): PatternLockConfig {
+export function generatePatternConfig(difficulty: number): PatternLockConfig {
   const config = MODULE_CONFIG.pattern;
-  const d = module.difficulty;
+  const d = difficulty;
   const effects = config.difficultyEffects;
 
   // Grid size increases with difficulty
@@ -111,9 +110,9 @@ function getNeighbors(index: number, gridSize: number): number[] {
 /**
  * Generate Keypad configuration based on difficulty
  */
-export function generateKeypadConfig(module: SecurityModule): KeypadConfig {
+export function generateKeypadConfig(difficulty: number): KeypadConfig {
   const config = MODULE_CONFIG.keypad;
-  const d = module.difficulty;
+  const d = difficulty;
   const effects = config.difficultyEffects;
 
   // Sequence length increases with difficulty
@@ -146,9 +145,9 @@ function generateRandomSequence(length: number): string {
 /**
  * Generate Timing Lock configuration based on difficulty
  */
-export function generateTimingConfig(module: SecurityModule): TimingLockConfig {
+export function generateTimingConfig(difficulty: number): TimingLockConfig {
   const config = MODULE_CONFIG.timing;
-  const d = module.difficulty;
+  const d = difficulty;
   const effects = config.difficultyEffects;
 
   // Rotation speed increases with difficulty
@@ -169,22 +168,6 @@ export function generateTimingConfig(module: SecurityModule): TimingLockConfig {
     attemptsAllowed,
     targetPosition,
   };
-}
-
-/**
- * Generate mini-game configuration for a module
- */
-export function generateMiniGameConfig(module: SecurityModule): MiniGameConfig {
-  switch (module.type) {
-    case 'pattern':
-      return generatePatternConfig(module);
-    case 'keypad':
-      return generateKeypadConfig(module);
-    case 'timing':
-      return generateTimingConfig(module);
-    default:
-      throw new Error(`Unknown module type: ${module.type}`);
-  }
 }
 
 /**

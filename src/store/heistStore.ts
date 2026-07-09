@@ -2,7 +2,6 @@
 
 import { create } from 'zustand';
 import { BotSafe, MiniGameResult, AttackResult } from '../types';
-import { generateMiniGameConfig } from '../game/modules';
 import { ECONOMY } from '../game/constants';
 
 interface HeistStore {

@@ -45,3 +45,7 @@ export { SpotDiffGame } from './SpotDiffGame';
 export { ReactionGame } from './ReactionGame';
 export { NumSequenceGame } from './NumSequenceGame';
 export { CipherGame } from './CipherGame';
+
+// Registry (unified dispatch)
+export { MINIGAME_REGISTRY, getMiniGameComponent } from './registry';
+export { MiniGameErrorBoundary } from './MiniGameErrorBoundary';

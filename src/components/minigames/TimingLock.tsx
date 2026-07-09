@@ -1,14 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { TimingLockConfig, MiniGameResult } from '../../types';
-import { scoreTimingAttempt } from '../../game/modules';
+import { MiniGameProps } from '../../types';
+import { generateTimingConfig, scoreTimingAttempt } from '../../game/modules';
 
-interface TimingLockProps {
-  config: TimingLockConfig;
-  onComplete: (result: MiniGameResult) => void;
-}
-
-export const TimingLock = ({ config, onComplete }: TimingLockProps) => {
+export const TimingLock = ({ difficulty, onComplete }: MiniGameProps) => {
+  const config = useMemo(() => generateTimingConfig(difficulty), [difficulty]);
   const [currentAngle, setCurrentAngle] = useState(0);
   const [isRunning, setIsRunning] = useState(true);
   const [attempts, setAttempts] = useState(0);

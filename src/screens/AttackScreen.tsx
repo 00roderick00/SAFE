@@ -1,26 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, XCircle, ChevronRight, Coins, ArrowLeft } from 'lucide-react';
+import { CheckCircle, XCircle, ChevronRight, Coins, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { Card, Button, ProgressBar } from '../components/ui';
-import { PatternLock, Keypad, TimingLock } from '../components/minigames';
-// Arcade games
-import { PacmanGame } from '../components/minigames/PacmanGame';
-import { SpaceInvaders } from '../components/minigames/SpaceInvaders';
-import { FroggerGame } from '../components/minigames/FroggerGame';
-import { DonkeyKong } from '../components/minigames/DonkeyKong';
-import { CentipedeGame } from '../components/minigames/CentipedeGame';
-import { AsteroidsGame } from '../components/minigames/AsteroidsGame';
-// Puzzle games
-import { QuickMath } from '../components/minigames/QuickMath';
-import { WordScramble } from '../components/minigames/WordScramble';
-import { MemoryMatch } from '../components/minigames/MemoryMatch';
+import { getMiniGameComponent, MiniGameErrorBoundary } from '../components/minigames';
 
 import { usePlayerStore } from '../store/playerStore';
 import { useHeistStore } from '../store/heistStore';
 import { useGameStore } from '../store/gameStore';
-import { generateMiniGameConfig } from '../game/modules';
-import { MiniGameResult, PatternLockConfig, KeypadConfig, TimingLockConfig } from '../types';
+import { MiniGameResult } from '../types';
 import { ECONOMY } from '../game/constants';
 
 type Phase = 'ready' | 'playing' | 'result' | 'complete';
@@ -146,11 +134,23 @@ export const AttackScreen = () => {
     navigate('/heist');
   };
 
+  const MiniGameComponent = useMemo(
+    () => (currentModule ? getMiniGameComponent(currentModule.type) : null),
+    [currentModule]
+  );
+
+  const seed = useMemo(
+    () =>
+      currentTarget && currentModule
+        ? `${currentTarget.id}:${currentModule.id}:${currentModuleIndex}`
+        : '',
+    [currentTarget, currentModule, currentModuleIndex]
+  );
+
   if (!currentTarget || !currentModule) {
     return null;
   }
 
-  const config = generateMiniGameConfig(currentModule);
   const lastResult = moduleResults[moduleResults.length - 1];
 
   const totalScore =
@@ -228,82 +228,46 @@ export const AttackScreen = () => {
               exit={{ opacity: 0, y: -20 }}
               className="w-full max-w-sm"
             >
-              {/* Classic Locks */}
-              {currentModule.type === 'pattern' && (
-                <PatternLock
-                  config={config as PatternLockConfig}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'keypad' && (
-                <Keypad
-                  config={config as KeypadConfig}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'timing' && (
-                <TimingLock
-                  config={config as TimingLockConfig}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-
-              {/* Arcade Games */}
-              {currentModule.type === 'pacman' && (
-                <PacmanGame
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'spaceinvaders' && (
-                <SpaceInvaders
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'frogger' && (
-                <FroggerGame
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'donkeykong' && (
-                <DonkeyKong
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'centipede' && (
-                <CentipedeGame
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'asteroids' && (
-                <AsteroidsGame
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-
-              {/* Puzzle Games */}
-              {currentModule.type === 'quickmath' && (
-                <QuickMath
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'wordscramble' && (
-                <WordScramble
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
-              )}
-              {currentModule.type === 'memorymatch' && (
-                <MemoryMatch
-                  difficulty={currentModule.difficulty}
-                  onComplete={handleModuleComplete}
-                />
+              {MiniGameComponent ? (
+                <MiniGameErrorBoundary
+                  key={seed}
+                  moduleType={currentModule.type}
+                  moduleId={currentModule.id}
+                  onFail={handleModuleComplete}
+                >
+                  <MiniGameComponent
+                    difficulty={currentModule.difficulty}
+                    seed={seed}
+                    onComplete={handleModuleComplete}
+                  />
+                </MiniGameErrorBoundary>
+              ) : (
+                <div className="text-center py-8">
+                  <AlertTriangle size={56} className="text-warning mx-auto mb-4" />
+                  <p className="font-display text-lg font-bold text-warning mb-2">
+                    Unknown module
+                  </p>
+                  <p className="text-sm text-text-dim mb-4">
+                    No minigame is registered for type
+                    <span className="text-text"> {currentModule.type}</span>.
+                    Counting as a failed lock.
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() =>
+                      handleModuleComplete({
+                        moduleId: currentModule.id,
+                        moduleType: currentModule.type,
+                        score: 0,
+                        passed: false,
+                        timeSpent: 0,
+                      })
+                    }
+                  >
+                    Continue
+                  </Button>
+                </div>
               )}
             </motion.div>
           )}

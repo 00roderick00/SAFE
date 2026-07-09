@@ -1,15 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { Delete } from 'lucide-react';
-import { KeypadConfig, MiniGameResult } from '../../types';
-import { scoreKeypadAttempt } from '../../game/modules';
+import { MiniGameProps } from '../../types';
+import { generateKeypadConfig, scoreKeypadAttempt } from '../../game/modules';
 
-interface KeypadProps {
-  config: KeypadConfig;
-  onComplete: (result: MiniGameResult) => void;
-}
-
-export const Keypad = ({ config, onComplete }: KeypadProps) => {
+export const Keypad = ({ difficulty, onComplete }: MiniGameProps) => {
+  const config = useMemo(() => generateKeypadConfig(difficulty), [difficulty]);
   const [showSequence, setShowSequence] = useState(true);
   const [userInput, setUserInput] = useState('');
   const [startTime, setStartTime] = useState<number | null>(null);

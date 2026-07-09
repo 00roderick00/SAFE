@@ -172,6 +172,17 @@ export interface TimingLockConfig {
 
 export type MiniGameConfig = PatternLockConfig | KeypadConfig | TimingLockConfig;
 
+/**
+ * Unified minigame contract. Every minigame component accepts these props
+ * and reports the result via onComplete. `seed` is reserved for deterministic
+ * runs (server-side replay in Phase 2); today's games may ignore it.
+ */
+export interface MiniGameProps {
+  difficulty: number;
+  seed: string;
+  onComplete: (result: MiniGameResult) => void;
+}
+
 export interface MiniGameResult {
   moduleId: string;
   moduleType: ModuleType | string; // string allows custom game types
