@@ -1,0 +1,119 @@
+# Phase 2 Progress
+
+Server-authoritative rewrite of the core loop on Supabase. Client is now a thin renderer over Edge Functions that own RNG, plausibility, and every balance mutation. Existing client-only flow is retained as a fallback for offline/dev use, but a real signed-in user always transacts through the server.
+
+`npm run build` ✓ · `npm run lint` ✓ (0 errors, 80 warnings — all the react-hooks v7 warnings inherited from Phase 1) · `npm test` ✓ 94 tests.
+
+## Manual deploy steps (do these in order in the Supabase dashboard)
+
+You've already set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local`. The following are one-time server-side deploys.
+
+### 1. Run the SQL migrations
+
+Open **SQL Editor** in your Supabase dashboard for project `cqacfzkyxmtmjzpksznj`, then paste and run each of these files in order:
+
+1. `supabase/migrations/20260710120000_phase2_initial_schema.sql` — creates the tables, enums, `insert_ledger()` helper, and the `handle_new_user()` trigger that provisions a profile + safe + 1000-token starting grant when someone signs up.
+2. `supabase/migrations/20260710120100_phase2_rls_policies.sql` — enables Row-Level Security on every user-facing table and installs owner-scoped read/write policies. Also creates the `public_safe_snapshots` view attackers use to see potential targets.
+
+After running both, verify:
+- **Table editor** shows `profiles`, `safes`, `attacks`, `attack_results`, `insurance_policies`, `ledger`.
+- **Database → Functions** shows `insert_ledger` and `handle_new_user`.
+- **Authentication → Policies** shows the six tables have RLS enabled.
+
+### 2. Deploy the three Edge Functions
+
+Install the Supabase CLI once (`brew install supabase/tap/supabase`), then from the repo root:
+
+```sh
+supabase login                        # first time only
+supabase link --project-ref cqacfzkyxmtmjzpksznj
+supabase functions deploy start_attack
+supabase functions deploy submit_result
+supabase functions deploy resolve_defense
+```
+
+Each deploy uploads `supabase/functions/<name>/index.ts` plus everything it imports from `supabase/functions/_shared/`.
+
+### 3. Set the function secrets
+
+The functions read three env vars at runtime. Set them from the dashboard (**Project settings → Edge Functions → Secrets**) or the CLI:
+
+```sh
+supabase secrets set SUPABASE_URL="https://cqacfzkyxmtmjzpksznj.supabase.co"
+supabase secrets set SUPABASE_ANON_KEY="sb_publishable_oAGqo_jXkjE6yP0AHQAOwA_TljkVzFC"
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY="<paste from Project settings → API>"
+```
+
+**`SUPABASE_SERVICE_ROLE_KEY` must never be shipped to the browser.** It bypasses RLS and is the key that lets Edge Functions write to `attacks`, `ledger`, and `insurance_policies`.
+
+### 4. Enable magic-link auth
+
+**Authentication → Providers → Email**:
+- Enable "Email" provider (usually on by default).
+- Under Site URL, set your dev URL: `http://localhost:5173` (add your prod URL when you deploy).
+- Under Redirect URLs, add `http://localhost:5173`. Magic-link emails will bounce back to this origin.
+
+### 5. Restart the dev server
+
+`.env.local` is only read on Vite startup:
+
+```sh
+npm run dev
+```
+
+## What changed on the client
+
+- **Auth gate** — `App.tsx` now renders `AuthScreen` when there is no Supabase session. The old onboarding is unchanged and still runs first.
+- **First-login migration** — `useHydrateFromServer` copies your localStorage balance/loadout into the DB once (idempotent via `profiles.migrated_from_local`) then rehydrates the client store from the server on every fresh session. If the local balance is *higher* than the 1000-token starting grant, the delta is credited as a `migration` ledger row. Local balance never *debits* on migration.
+- **Attack flow** — clicking a target in Heist mode now calls `start_attack`; the AttackScreen dispatches the server-provided per-module seeds; on completion `submit_result` decides win/loss and returns the new balance. The old client-computed path (`heistStore.startAttack` / `.completeAttack`) is kept as a fallback for when no session exists (or for the smoke tests).
+- **Defense** — `HomeScreen`'s heist-mode tick calls `resolve_defense` when signed in; the server rolls attacker skill, resolves against the actual loadout, and applies loot/insurance in the ledger. Client just displays the outcome.
+- **Async PvP target list** — `HeistScreen` queries `public_safe_snapshots` for real safes and backfills with local matchmaking bots to reach 15 targets.
+
+## Anti-cheat verification (browser test plan)
+
+The whole point of Phase 2 is that **editing localStorage can no longer change your real balance.** Steps to verify once the manual deploy above is done:
+
+1. **Fresh account A**
+   - `npm run dev`, open the app, click through onboarding.
+   - Enter your email in `AuthScreen`, click the magic link that arrives, and confirm you land on the home screen. Your balance should be **1000** (from `handle_new_user()`; a small delay is possible while the trigger fires — refresh once).
+2. **Fresh account B in a different browser profile** (or private window)
+   - Repeat with a second email. Confirm this account also starts at 1000. Confirm the home screen shows a *different* balance than account A when you both make a couple of moves — proves state is per-user, not shared localStorage.
+3. **Attack account A from account B (or vice versa)**
+   - In account B, enter Heist mode. In the target list you should see account A's handle. Attack it.
+   - The game should still play through the minigames (from server-provided seeds). On completion, the loot/loss you see should match what the server computed.
+   - In Supabase's Table Editor, open `ledger` and filter by your user id — you should see the sequence: `attack_stake`, then either `attack_loot` + `platform_cut` (win) or nothing else for you and `defense_fee` for A (loss).
+4. **Try to cheat via localStorage**
+   - Open devtools → Application → Local Storage.
+   - Find the `safe-player-storage` key and edit `safeBalance` to something ridiculous (e.g., 999999) then reload.
+   - The client will briefly show the tampered value from persist, then `useHydrateFromServer` will overwrite it with the server-authoritative balance on the next tick. Total time to correction: ~200ms.
+   - Now try to attack again: even if you spoofed a large balance in the client, `start_attack` reads `safes.balance` from the DB and will reject if the real balance is < stake. Watch it fail with `insufficient_balance`.
+5. **Try to cheat via a fabricated attack result**
+   - Start a real attack against another player; open Network tab and inspect the `submit_result` request payload.
+   - Try to modify one entry to have `score: 1, passed: true, timeSpent: 10` and resubmit (via replay).
+   - Server returns `implausible_result` with reason `too_fast_for_pass`. No `attack_loot` row is written; your stake stays lost.
+
+If all five checks pass, you've hit the Phase 2 Definition of Done from PHASE2.md.
+
+## Known trade-offs & TODOs
+
+- **Insurance purchase is two calls, not one.** `api.purchaseInsurance` inserts the policy and then debits via `insert_ledger`. If the second call fails you end up with a paid-for policy and no debit — the opposite (no policy, debit) is not possible because of the order. TODO: extract to a `buy_insurance` Edge Function so both writes go through a single stored procedure.
+- **Bot balances aren't persisted with the attack** — the server currently defaults to 1500 when computing loot for a bot target. Rounding this in a follow-up requires threading defender balance into `bot_target` jsonb on start.
+- **`resolve_defense` fires an inbound attack ~5% of the time** on the client tick. The tick is client-driven, so a malicious client could just spam the endpoint. TODO: add a per-user rate limit table or move to a cron.
+- **Real-time push not wired**. Attacks against a signed-in player fire and forget — the defender doesn't see a live notification until they open the app and hydrate. Supabase Realtime on the `ledger` table would fix this in a couple of lines.
+- **`bot_target` jsonb doesn't include defenderBalance yet** — see `submit_result/index.ts` fallback of 1500 for bot loot.
+- **`recentlyAttacked` is still in `gameStore` (localStorage)**. It's a UI hint, not authoritative — the server enforces cooldowns from `safes.last_attacked_at`. This is fine but noted.
+
+## Files added / touched
+
+- `supabase/migrations/20260710120000_phase2_initial_schema.sql`
+- `supabase/migrations/20260710120100_phase2_rls_policies.sql`
+- `supabase/functions/_shared/{types,constants,economy,modules,rng,plausibility,attack-flow,http}.ts`
+- `supabase/functions/{start_attack,submit_result,resolve_defense}/index.ts`
+- `supabase/functions/_shared/{rng,plausibility,attack-flow}.test.ts`
+- `supabase/functions/attack.roundtrip.test.ts`
+- `src/services/{supabaseClient,useSession,useHydrateFromServer,api}.ts`
+- `src/screens/AuthScreen.tsx`
+- `src/App.tsx`, `src/screens/HomeScreen.tsx`, `src/screens/HeistScreen.tsx`, `src/screens/AttackScreen.tsx`
+- `src/store/{gameStore,heistStore}.ts`
+- `src/game/{constants,economy,modules}.ts` (now one-line re-exports from `@shared/*`)
+- `vite.config.ts`, `vitest.config.ts`, `tsconfig.app.json` (path alias)
