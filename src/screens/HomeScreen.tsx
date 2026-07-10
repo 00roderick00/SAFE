@@ -13,6 +13,8 @@ import { usePlayerStore } from '../store/playerStore';
 import { useGameStore } from '../store/gameStore';
 import { calculateEconomyStats } from '../game/economy';
 import { haptics } from '../utils/haptics';
+import { useSession } from '../services/useSession';
+import { api } from '../services/api';
 
 type TimeRange = '1D' | '1W' | '1M' | '3M' | 'YTD' | 'ALL';
 
@@ -38,6 +40,7 @@ export const HomeScreen = () => {
 
   const { simulateDefense, addDefenseEvent, addNotification, refreshBotSafes, botSafes } =
     useGameStore();
+  const session = useSession();
 
   // Generate sample earnings data
   const allEarningsData = useMemo(() => {
@@ -94,11 +97,48 @@ export const HomeScreen = () => {
     return () => clearInterval(interval);
   }, [heistModeActive, heistModeExpiresAt, exitHeistMode, addNotification]);
 
-  // Simulate occasional attacks when in heist mode
+  // Simulate occasional attacks when in heist mode. When a Supabase
+  // session exists, resolution happens server-side (api.resolveDefense);
+  // otherwise fall back to the client-only simulator.
   useEffect(() => {
     if (!heistModeActive) return;
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
+      if (session) {
+        try {
+          const r = await api.resolveDefense();
+          if (!r.attacked) return;
+
+          if (r.newBalance !== null && r.newBalance !== undefined) {
+            usePlayerStore.setState({ safeBalance: r.newBalance });
+          }
+          if (r.success) {
+            addNotification({
+              type: 'defense_success',
+              title: 'Attack Defended!',
+              message: `${r.attackerName} failed to breach your safe. You earned ${r.feeEarned} tokens.`,
+            });
+          } else if ((r.insurancePayout ?? 0) > 0) {
+            addNotification({
+              type: 'defense_fail',
+              title: 'Safe Breached — Insurance Paid Out',
+              message: `${r.attackerName} breached your safe. You lost ${r.lootLost} tokens; insurance reimbursed ${r.insurancePayout}.`,
+            });
+          } else {
+            addNotification({
+              type: 'defense_fail',
+              title: 'Safe Breached!',
+              message: `${r.attackerName} breached your safe and stole ${r.lootLost} tokens.`,
+            });
+          }
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[defense] server tick failed', err);
+        }
+        return;
+      }
+
+      // Legacy local simulation (no session).
       const state = usePlayerStore.getState();
       const defenseResult = simulateDefense(
         state.safeBalance,
@@ -140,6 +180,7 @@ export const HomeScreen = () => {
     return () => clearInterval(interval);
   }, [
     heistModeActive,
+    session,
     simulateDefense,
     addDefenseEvent,
     addNotification,

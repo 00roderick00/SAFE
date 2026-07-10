@@ -11,13 +11,27 @@ import { CustomGameScreen } from './screens/CustomGameScreen';
 import { LeaderboardScreen } from './screens/LeaderboardScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
+import { AuthScreen } from './screens/AuthScreen';
 import { usePlayerStore } from './store/playerStore';
+import { useSession } from './services/useSession';
+import { useHydrateFromServer } from './services/useHydrateFromServer';
 
 function App() {
   const { onboardingCompleted, completeOnboarding } = usePlayerStore();
+  const session = useSession();
+  useHydrateFromServer(session ?? null);
 
   if (!onboardingCompleted) {
     return <OnboardingScreen onComplete={completeOnboarding} />;
+  }
+
+  if (session === undefined) {
+    // First-render loading of the auth session; render nothing to
+    // avoid flashing the auth screen for signed-in users.
+    return null;
+  }
+  if (session === null) {
+    return <AuthScreen />;
   }
 
   return (

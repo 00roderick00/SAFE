@@ -1,27 +1,62 @@
 // Heist State Store - manages active heist/attack state
+//
+// After Phase 2 the source of truth for an attack is the server.
+// A "server attack" is started via startServerAttack(), the module
+// list comes from the AttackStartPayload, and completeServerAttack()
+// posts the collected results to the submit_result Edge Function
+// which decides win/loss.
+//
+// The legacy client-only path (startAttack/completeAttack) is kept
+// so that unit tests and dev-mode-without-Supabase still function.
+// Real user gameplay always uses the server path.
 
 import { create } from 'zustand';
 import { BotSafe, MiniGameResult, AttackResult } from '../types';
 import { ECONOMY } from '../game/constants';
+import { api, type AttackModuleSeed, type AttackStartPayload, type SubmitResultPayload } from '../services/api';
+
+interface ServerAttack {
+  attackId: string;
+  defenderHandle: string;
+  isBotTarget: boolean;
+  stake: number;
+  potentialLoot: number;
+  modules: AttackModuleSeed[];
+}
 
 interface HeistStore {
-  // State
+  // Legacy state (client-computed attacks)
   currentTarget: BotSafe | null;
   currentModuleIndex: number;
   moduleResults: MiniGameResult[];
   attackStartedAt: number | null;
   stakePaid: number;
 
-  // Actions
+  // Server-driven attack state
+  serverAttack: ServerAttack | null;
+
+  // Legacy actions
   startAttack: (target: BotSafe, stake: number) => void;
   recordModuleResult: (result: MiniGameResult) => void;
-  nextModule: () => boolean; // returns true if more modules
+  nextModule: () => boolean;
   completeAttack: () => AttackResult | null;
   cancelAttack: () => void;
   resetHeist: () => void;
 
-  // Getters (computed in components)
-  getCurrentModule: () => BotSafe['securityLoadout']['modules'][0] | null;
+  // Server actions
+  startServerAttack: (input: { defenderSafeId?: string; botDifficulty?: number }) => Promise<AttackStartPayload>;
+  completeServerAttack: () => Promise<SubmitResultPayload | null>;
+
+  // Getters
+  getCurrentModule: () => {
+    id: string;
+    type: string;
+    difficulty: number;
+    weight: number;
+    name: string;
+    description: string;
+    seed?: string;
+  } | null;
   getProgress: () => { current: number; total: number };
 }
 
@@ -31,6 +66,7 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
   moduleResults: [],
   attackStartedAt: null,
   stakePaid: 0,
+  serverAttack: null,
 
   startAttack: (target, stake) =>
     set({
@@ -39,7 +75,21 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
       moduleResults: [],
       attackStartedAt: Date.now(),
       stakePaid: stake,
+      serverAttack: null,
     }),
+
+  startServerAttack: async (input) => {
+    const payload = await api.startAttack(input);
+    set({
+      serverAttack: payload,
+      currentTarget: null,
+      currentModuleIndex: 0,
+      moduleResults: [],
+      attackStartedAt: Date.now(),
+      stakePaid: payload.stake,
+    });
+    return payload;
+  },
 
   recordModuleResult: (result) =>
     set((state) => ({
@@ -48,15 +98,13 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
 
   nextModule: () => {
     const state = get();
-    if (!state.currentTarget) return false;
+    const totalModules = state.serverAttack
+      ? state.serverAttack.modules.length
+      : state.currentTarget?.securityLoadout.modules.length ?? 0;
 
     const nextIndex = state.currentModuleIndex + 1;
-    const hasMore = nextIndex < state.currentTarget.securityLoadout.modules.length;
-
-    if (hasMore) {
-      set({ currentModuleIndex: nextIndex });
-    }
-
+    const hasMore = nextIndex < totalModules;
+    if (hasMore) set({ currentModuleIndex: nextIndex });
     return hasMore;
   },
 
@@ -71,18 +119,15 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
       passed: result.passed,
     }));
 
-    // Calculate total weighted score
     const totalWeight = modules.reduce((sum, m) => sum + m.weight, 0);
     const totalScore = state.moduleResults.reduce((sum, result, index) => {
       return sum + (result.score * modules[index].weight) / totalWeight;
     }, 0);
 
-    // Success requires passing ALL modules
     const allModulesPassed = state.moduleResults.length === modules.length &&
       state.moduleResults.every(r => r.passed);
     const success = allModulesPassed;
 
-    // Calculate loot using economy constants (will be processed by game store)
     const potentialLoot = Math.min(
       state.currentTarget.safeBalance * ECONOMY.lootFraction,
       ECONOMY.lootCap
@@ -98,45 +143,69 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
       success,
       moduleScores,
       totalScore,
-      threshold: 1, // Must pass all locks
+      threshold: 1,
       stakePaid: state.stakePaid,
       lootGained,
       platformFee,
     };
-
     return result;
   },
 
-  cancelAttack: () =>
-    set({
-      currentTarget: null,
-      currentModuleIndex: 0,
-      moduleResults: [],
-      attackStartedAt: null,
-      stakePaid: 0,
-    }),
+  completeServerAttack: async () => {
+    const state = get();
+    if (!state.serverAttack) return null;
+    const results = state.moduleResults.map((r, i) => ({
+      moduleIndex: i,
+      moduleType: state.serverAttack!.modules[i].moduleType,
+      score: r.score,
+      passed: r.passed,
+      timeSpent: r.timeSpent,
+    }));
+    return api.submitResult({ attackId: state.serverAttack.attackId, results });
+  },
 
-  resetHeist: () =>
-    set({
-      currentTarget: null,
-      currentModuleIndex: 0,
-      moduleResults: [],
-      attackStartedAt: null,
-      stakePaid: 0,
-    }),
+  cancelAttack: () => set({
+    currentTarget: null,
+    currentModuleIndex: 0,
+    moduleResults: [],
+    attackStartedAt: null,
+    stakePaid: 0,
+    serverAttack: null,
+  }),
+
+  resetHeist: () => set({
+    currentTarget: null,
+    currentModuleIndex: 0,
+    moduleResults: [],
+    attackStartedAt: null,
+    stakePaid: 0,
+    serverAttack: null,
+  }),
 
   getCurrentModule: () => {
     const state = get();
+    if (state.serverAttack) {
+      const m = state.serverAttack.modules[state.currentModuleIndex];
+      if (!m) return null;
+      return {
+        id: `${state.serverAttack.attackId}-${m.index}`,
+        type: m.moduleType,
+        difficulty: m.difficulty,
+        weight: 1,
+        name: m.moduleType,
+        description: '',
+        seed: m.seed,
+      };
+    }
     if (!state.currentTarget) return null;
     return state.currentTarget.securityLoadout.modules[state.currentModuleIndex] || null;
   },
 
   getProgress: () => {
     const state = get();
-    if (!state.currentTarget) return { current: 0, total: 0 };
-    return {
-      current: state.currentModuleIndex + 1,
-      total: state.currentTarget.securityLoadout.modules.length,
-    };
+    const total = state.serverAttack
+      ? state.serverAttack.modules.length
+      : state.currentTarget?.securityLoadout.modules.length ?? 0;
+    return { current: state.currentModuleIndex + 1, total };
   },
 }));

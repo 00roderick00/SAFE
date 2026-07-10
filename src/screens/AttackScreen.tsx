@@ -23,9 +23,11 @@ export const AttackScreen = () => {
     currentModuleIndex,
     moduleResults,
     stakePaid,
+    serverAttack,
     recordModuleResult,
     nextModule,
     completeAttack,
+    completeServerAttack,
     resetHeist,
     getCurrentModule,
     getProgress,
@@ -36,13 +38,15 @@ export const AttackScreen = () => {
 
   const currentModule = getCurrentModule();
   const progress = getProgress();
+  const isServerAttack = Boolean(serverAttack);
+  const targetName = serverAttack?.defenderHandle ?? currentTarget?.ownerName ?? 'target';
 
-  // Redirect if no target
+  // Redirect if no attack in progress
   useEffect(() => {
-    if (!currentTarget) {
+    if (!currentTarget && !serverAttack) {
       navigate('/heist');
     }
-  }, [currentTarget, navigate]);
+  }, [currentTarget, serverAttack, navigate]);
 
   // Countdown before starting
   useEffect(() => {
@@ -81,31 +85,68 @@ export const AttackScreen = () => {
     [recordModuleResult, nextModule]
   );
 
-  const handleComplete = useCallback(() => {
+  const handleComplete = useCallback(async () => {
+    if (isServerAttack) {
+      try {
+        const payload = await completeServerAttack();
+        if (!payload) {
+          navigate('/heist');
+          return;
+        }
+        // Server told us what happened; sync the player store.
+        if (payload.newBalance !== null) {
+          usePlayerStore.setState({ safeBalance: payload.newBalance });
+        }
+        if (payload.status === 'won') {
+          recordSuccessfulHeist();
+          updateRiskRating(15);
+          addNotification({
+            type: 'attack_success',
+            title: 'Heist Successful!',
+            message: `You stole ${payload.loot - payload.platformFee} tokens from ${targetName}!`,
+          });
+        } else {
+          updateRiskRating(-10);
+          addNotification({
+            type: 'attack_fail',
+            title: 'Heist Failed',
+            message: `You lost ${payload.stake} tokens attacking ${targetName}.`,
+          });
+        }
+      } catch (err) {
+        addNotification({
+          type: 'attack_fail',
+          title: 'Attack rejected',
+          message: err instanceof Error ? err.message : 'Server refused this attack.',
+        });
+      }
+      resetHeist();
+      navigate('/heist');
+      return;
+    }
+
+    // Legacy client-computed path (used when Supabase isn't configured
+    // or for local dev / smoke tests).
     const result = completeAttack();
     if (!result) {
       navigate('/heist');
       return;
     }
 
-    // Record result
     addAttackResult(result);
     updateBotCooldown(result.targetId);
 
     if (result.success) {
-      // Add loot to player
       addEarnings(result.lootGained);
       recordSuccessfulHeist();
-      updateRiskRating(15); // Increase MMR on success
-
+      updateRiskRating(15);
       addNotification({
         type: 'attack_success',
         title: 'Heist Successful!',
         message: `You stole ${result.lootGained} tokens from ${result.targetName}!`,
       });
     } else {
-      updateRiskRating(-10); // Decrease MMR on failure
-
+      updateRiskRating(-10);
       addNotification({
         type: 'attack_fail',
         title: 'Heist Failed',
@@ -116,6 +157,8 @@ export const AttackScreen = () => {
     resetHeist();
     navigate('/heist');
   }, [
+    isServerAttack,
+    completeServerAttack,
     completeAttack,
     addAttackResult,
     updateBotCooldown,
@@ -126,6 +169,7 @@ export const AttackScreen = () => {
     stakePaid,
     resetHeist,
     navigate,
+    targetName,
   ]);
 
   const handleCancel = () => {
@@ -134,15 +178,18 @@ export const AttackScreen = () => {
     navigate('/heist');
   };
 
-  const seed = useMemo(
-    () =>
-      currentTarget && currentModule
-        ? `${currentTarget.id}:${currentModule.id}:${currentModuleIndex}`
-        : '',
-    [currentTarget, currentModule, currentModuleIndex]
-  );
+  const seed = useMemo(() => {
+    // Prefer the server-provided seed (deterministic + verifiable).
+    if (currentModule && 'seed' in currentModule && currentModule.seed) {
+      return currentModule.seed;
+    }
+    if (currentTarget && currentModule) {
+      return `${currentTarget.id}:${currentModule.id}:${currentModuleIndex}`;
+    }
+    return '';
+  }, [currentTarget, currentModule, currentModuleIndex]);
 
-  if (!currentTarget || !currentModule) {
+  if ((!currentTarget && !serverAttack) || !currentModule) {
     return null;
   }
 
@@ -162,7 +209,7 @@ export const AttackScreen = () => {
         <div className="text-center">
           <p className="text-sm text-text-dim">Attacking</p>
           <p className="font-display font-semibold text-text">
-            {currentTarget.ownerName}
+            {targetName}
           </p>
         </div>
         <div className="w-10" /> {/* Spacer */}
@@ -222,7 +269,7 @@ export const AttackScreen = () => {
             >
               <MiniGameHost
                 key={seed}
-                moduleType={currentModule.type}
+                moduleType={currentModule.type as import('../types').ModuleType}
                 moduleId={currentModule.id}
                 difficulty={currentModule.difficulty}
                 seed={seed}
@@ -291,11 +338,15 @@ export const AttackScreen = () => {
                       <Coins size={28} />
                       <span>
                         +
-                        {Math.round(
-                          currentTarget.safeBalance *
-                            ECONOMY.lootFraction *
-                            (1 - ECONOMY.platformCut)
-                        )}
+                        {serverAttack
+                          ? Math.round(serverAttack.potentialLoot * (1 - ECONOMY.platformCut))
+                          : currentTarget
+                            ? Math.round(
+                                currentTarget.safeBalance *
+                                  ECONOMY.lootFraction *
+                                  (1 - ECONOMY.platformCut)
+                              )
+                            : 0}
                       </span>
                     </div>
                   </>

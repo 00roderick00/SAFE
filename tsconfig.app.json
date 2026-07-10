@@ -27,5 +27,9 @@
       "@shared/*": ["supabase/functions/_shared/*"]
     }
   },
-  "include": ["src", "supabase/functions/_shared"]
+  "include": ["src", "supabase/functions/_shared"],
+  "exclude": [
+    "supabase/functions/**/index.ts",
+    "supabase/functions/_shared/http.ts"
+  ]
 }

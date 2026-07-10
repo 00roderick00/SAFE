@@ -17,6 +17,7 @@ import { useHeistStore } from '../store/heistStore';
 import { BotSafe } from '../types';
 import { calculateLoot } from '../game/economy';
 import { haptics } from '../utils/haptics';
+import { useSession } from '../services/useSession';
 
 // Difficulty bar component
 const DifficultyBar = ({ level }: { level: 'soft' | 'tricky' | 'brutal' }) => {
@@ -61,10 +62,11 @@ export const HeistScreen = () => {
     exitHeistMode,
   } = usePlayerStore();
 
-  const { botSafes, refreshBotSafes, recentlyAttacked, recordBotAttacked } =
+  const { botSafes, refreshBotSafes, refreshTargetsFromServer, recentlyAttacked, recordBotAttacked } =
     useGameStore();
 
-  const { startAttack } = useHeistStore();
+  const { startAttack, startServerAttack } = useHeistStore();
+  const session = useSession();
 
   // Redirect if not in heist mode
   useEffect(() => {
@@ -84,10 +86,24 @@ export const HeistScreen = () => {
   const handleRefresh = async () => {
     haptics.light();
     setRefreshing(true);
-    await new Promise((r) => setTimeout(r, 500));
-    refreshBotSafes(riskRating);
+    if (session) {
+      await refreshTargetsFromServer(session.user.id, riskRating);
+    } else {
+      await new Promise((r) => setTimeout(r, 500));
+      refreshBotSafes(riskRating);
+    }
     setRefreshing(false);
   };
+
+  // Initial load: real safes + bot backfill when signed in.
+  useEffect(() => {
+    if (session && botSafes.length === 0) {
+      refreshTargetsFromServer(session.user.id, riskRating);
+    } else if (!session && botSafes.length === 0) {
+      refreshBotSafes(riskRating);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   const handleSelectTarget = (safe: BotSafe) => {
     if (safe.attackFee > safeBalance) return;
@@ -95,18 +111,38 @@ export const HeistScreen = () => {
     setSelectedTarget(safe);
   };
 
-  const handleConfirmAttack = () => {
+  const handleConfirmAttack = async () => {
     if (!selectedTarget) return;
     haptics.heavy();
 
-    // Deduct stake
-    usePlayerStore.getState().withdrawTokens(selectedTarget.attackFee);
+    if (session) {
+      // Server owns the flow. Bot rows in the target list are those
+      // whose ids are NOT UUIDs; treat them as bot targets. Real
+      // safes have UUID ids (returned by public_safe_snapshots).
+      const isRealSafe = /^[0-9a-f]{8}-/i.test(selectedTarget.id);
+      try {
+        await startServerAttack(
+          isRealSafe
+            ? { defenderSafeId: selectedTarget.id }
+            : { botDifficulty: selectedTarget.securityScore / 100 }
+        );
+        recordBotAttacked(selectedTarget.id);
+        setSelectedTarget(null);
+        navigate('/attack');
+      } catch (err) {
+        // Server refused (cooldown, insufficient balance, etc.).
+        // Surface the reason to the user; leave the modal open so
+        // they can pick a different target.
+        // eslint-disable-next-line no-alert
+        alert(err instanceof Error ? err.message : 'Attack failed');
+      }
+      return;
+    }
 
-    // Start attack
+    // Legacy path (no session): client-only flow.
+    usePlayerStore.getState().withdrawTokens(selectedTarget.attackFee);
     startAttack(selectedTarget, selectedTarget.attackFee);
     recordBotAttacked(selectedTarget.id);
-
-    // Navigate to attack screen
     navigate('/attack');
   };
 

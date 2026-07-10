@@ -5,7 +5,8 @@ import { persist } from 'zustand/middleware';
 import { BotSafe, AttackResult, DefenseEvent, GameNotification, InsurancePolicy, SecurityLoadout } from '../types';
 import { generateBotFeed, generatePracticeSafe } from '../game/matchmaking';
 import { ECONOMY } from '../game/constants';
-import { calculateAttackFee, processInsuranceClaim } from '../game/economy';
+import { calculateAttackFee, calculateSecurityScore, getDifficultyBand, getLootRange, processInsuranceClaim } from '../game/economy';
+import { api } from '../services/api';
 
 interface GameStore {
   // State
@@ -19,6 +20,12 @@ interface GameStore {
 
   // Actions
   refreshBotSafes: (playerRating: number) => void;
+  /**
+   * Server-backed target refresh: pull real players' safe snapshots
+   * from Supabase and backfill with bots up to `count`. When there is
+   * no session or the query fails, falls back to `refreshBotSafes`.
+   */
+  refreshTargetsFromServer: (userId: string, playerRating: number, count?: number) => Promise<void>;
   getPracticeSafe: () => BotSafe;
   addAttackResult: (result: AttackResult) => void;
   addDefenseEvent: (event: DefenseEvent) => void;
@@ -54,6 +61,41 @@ export const useGameStore = create<GameStore>()(
           botSafes: safes,
           lastBotRefresh: Date.now(),
         });
+      },
+
+      refreshTargetsFromServer: async (userId, playerRating, count = 15) => {
+        try {
+          const real = await api.listTargets(userId, count);
+          const realAsBotSafes: BotSafe[] = real.map((snap) => {
+            const score = calculateSecurityScore(snap.security_loadout);
+            const fee = calculateAttackFee(snap.balance, score);
+            return {
+              id: snap.id,
+              ownerName: snap.handle ?? 'Player',
+              safeBalance: snap.balance,
+              securityScore: score,
+              securityLoadout: snap.security_loadout,
+              difficultyBand: getDifficultyBand(score),
+              lootRange: getLootRange(snap.balance),
+              attackFee: fee,
+              lastAttackedAt: snap.last_attacked_at ? new Date(snap.last_attacked_at).getTime() : null,
+              attackCooldownUntil: null,
+              tagline: 'Live target',
+            };
+          });
+          const remaining = Math.max(0, count - realAsBotSafes.length);
+          const bots = remaining > 0 ? generateBotFeed(playerRating, remaining) : [];
+          set({
+            botSafes: [...realAsBotSafes, ...bots],
+            lastBotRefresh: Date.now(),
+          });
+        } catch (err) {
+          // Fall back to local bots when the server is unreachable.
+          // eslint-disable-next-line no-console
+          console.warn('[targets] server refresh failed, using local bots', err);
+          const safes = generateBotFeed(playerRating, count);
+          set({ botSafes: safes, lastBotRefresh: Date.now() });
+        }
       },
 
       getPracticeSafe: () => {

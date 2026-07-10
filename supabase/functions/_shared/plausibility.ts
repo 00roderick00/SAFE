@@ -57,8 +57,11 @@ const MAX_TIME_MS = 3 * 60 * 1000; // 3 minutes is a reasonable ceiling
  * loosely — higher difficulty should not cap achievable score, but
  * a perfect score at difficulty 1 with a 500ms run is implausible.
  */
-export function boundsFor(moduleType: ModuleType | string, _difficulty: number): PlausibilityBounds {
+export function boundsFor(moduleType: ModuleType | string, difficulty: number): PlausibilityBounds {
   const minTimeMs = MIN_TIME_MS_BY_TYPE[moduleType as ModuleType] ?? DEFAULT_MIN_TIME_MS;
+  // difficulty is currently informational only; declared so future
+  // bounds (e.g. lower minTime at low difficulty) can key on it.
+  void difficulty;
   return {
     minTimeMs,
     maxTimeMs: MAX_TIME_MS,
