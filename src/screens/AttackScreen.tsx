@@ -10,6 +10,8 @@ import { useHeistStore } from '../store/heistStore';
 import { useGameStore } from '../store/gameStore';
 import { MiniGameResult } from '../types';
 import { ECONOMY } from '../game/constants';
+import { api } from '../services/api';
+import { supabase } from '../services/supabaseClient';
 
 type Phase = 'ready' | 'playing' | 'result' | 'complete';
 
@@ -85,6 +87,24 @@ export const AttackScreen = () => {
     [recordModuleResult, nextModule]
   );
 
+  /**
+   * Ensure the client's cached balance matches the server truth
+   * after any state-mutating call. Payload's newBalance is trusted
+   * first; we fall back to a fresh safe row read in case the server
+   * couldn't include it.
+   */
+  const rehydrateBalance = useCallback(async (newBalance: number | null | undefined) => {
+    if (typeof newBalance === 'number') {
+      usePlayerStore.setState({ safeBalance: newBalance });
+      return;
+    }
+    const { data: sess } = await supabase.auth.getUser();
+    const userId = sess.user?.id;
+    if (!userId) return;
+    const safe = await api.getSafe(userId);
+    if (safe) usePlayerStore.setState({ safeBalance: safe.balance });
+  }, []);
+
   const handleComplete = useCallback(async () => {
     if (isServerAttack) {
       try {
@@ -93,10 +113,7 @@ export const AttackScreen = () => {
           navigate('/heist');
           return;
         }
-        // Server told us what happened; sync the player store.
-        if (payload.newBalance !== null) {
-          usePlayerStore.setState({ safeBalance: payload.newBalance });
-        }
+        await rehydrateBalance(payload.newBalance);
         if (payload.status === 'won') {
           recordSuccessfulHeist();
           updateRiskRating(15);
@@ -170,13 +187,29 @@ export const AttackScreen = () => {
     resetHeist,
     navigate,
     targetName,
+    rehydrateBalance,
   ]);
 
-  const handleCancel = () => {
-    // Stake is already lost
+  const handleCancel = useCallback(async () => {
+    // Abandoning still costs the stake, so we resolve the attack
+    // server-side (submits whatever module results we have so far;
+    // the server pads the rest as failed and marks it 'lost'). Then
+    // refresh the balance from the server so the UI is truthful.
+    if (isServerAttack) {
+      try {
+        const payload = await completeServerAttack();
+        if (payload) await rehydrateBalance(payload.newBalance);
+      } catch (err) {
+        // Non-fatal — leave the pending attack in place; the hydrate
+        // cleanup on next login will resolve it. Don't spam the user
+        // with a modal here.
+        // eslint-disable-next-line no-console
+        console.warn('[cancel] submit_result failed', err);
+      }
+    }
     resetHeist();
     navigate('/heist');
-  };
+  }, [isServerAttack, completeServerAttack, rehydrateBalance, resetHeist, navigate]);
 
   const seed = useMemo(() => {
     // Prefer the server-provided seed (deterministic + verifiable).

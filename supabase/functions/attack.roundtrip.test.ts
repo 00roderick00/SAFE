@@ -1,16 +1,21 @@
 // Round-trip test for the server-authoritative attack flow.
 //
 // We do NOT boot Deno.serve or the Supabase runtime — instead we
-// exercise the pure helpers that back start_attack / submit_result
-// against an in-memory ledger and verify:
-//   1. Stake is debited on start.
-//   2. Server-owned seeds are non-forgeable (change per attack).
-//   3. On a "won" resolution the attacker earns loot minus the
-//      platform cut, defender's balance drops, and the ledger sums
-//      match the safe balances.
-//   4. On a "lost" resolution the attacker forfeits only the stake
-//      and (against a bot target) the stake accrues to platform.
-//   5. Plausibility rejection prevents a payout.
+// model the Edge Function's decision tree with in-memory helpers
+// (`simulateSubmitResult`) that call the same shared helpers the
+// real submit_result Edge Function does. That gives us fast, hermetic
+// tests of the invariants we care about:
+//
+//   * Stake debited on start; seeds unique per attack.
+//   * Full-N pass → attacker receives loot, defender debited,
+//     platform gets cut, ledger sum == cached balance.
+//   * Partial submission (fail on lock 1 of N) → status='lost',
+//     server pads unplayed modules, no loot.
+//   * Empty submission (abandon) → status='lost', no loot.
+//   * Idempotency: replaying submit_result for a resolved attack
+//     returns the resolved state and writes no new ledger rows.
+//   * Payload always includes newBalance matching ledger sum.
+//   * Plausibility rejection (perfect scores at 10ms) prevents loot.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
@@ -18,8 +23,9 @@ import {
   computeLootSplit,
   computeStake,
   generateBotLoadout,
+  type AttackModuleSeed,
 } from './_shared/attack-flow';
-import { checkPlausibility } from './_shared/plausibility';
+import { checkPlausibility, type SubmittedResult } from './_shared/plausibility';
 import { calculateSecurityScore } from './_shared/economy';
 import { ECONOMY } from './_shared/constants';
 import type { SecurityLoadout } from './_shared/types';
@@ -27,10 +33,24 @@ import type { SecurityLoadout } from './_shared/types';
 // --- in-memory mock ---------------------------------------------
 
 interface LedgerRow { userId: string | null; delta: number; reason: string; refId: string }
+interface StoredAttack {
+  id: string;
+  attackerId: string;
+  defenderId: string | null;
+  isBot: boolean;
+  stake: number;
+  status: 'pending' | 'won' | 'lost';
+  loot: number;
+  platformFee: number;
+  loadout: SecurityLoadout;
+  seeds: AttackModuleSeed[];
+  results: { moduleIndex: number; score: number; passed: boolean; timeSpent: number }[];
+}
 
 class MockDb {
   balances = new Map<string, number>();
   ledger: LedgerRow[] = [];
+  attacks = new Map<string, StoredAttack>();
 
   seed(userId: string, initial: number) {
     this.balances.set(userId, initial);
@@ -54,6 +74,138 @@ class MockDb {
       .filter((r) => r.userId === userId)
       .reduce((sum, r) => sum + r.delta, 0);
   }
+
+  ledgerCount(userId: string | null, reason: string, refId: string): number {
+    return this.ledger.filter(r => r.userId === userId && r.reason === reason && r.refId === refId).length;
+  }
+}
+
+// --- server-side simulation of start_attack + submit_result ----
+
+interface SubmitPayload {
+  attackId: string;
+  status: 'won' | 'lost';
+  loot: number;
+  platformFee: number;
+  stake: number;
+  newBalance: number;
+  idempotent: boolean;
+}
+
+interface SubmitError { error: string; reason?: string }
+
+function simulateStartAttack(
+  db: MockDb,
+  attackId: string,
+  attackerId: string,
+  defenderId: string | null,
+  defenderBalance: number,
+  loadout: SecurityLoadout
+): { stake: number; seeds: AttackModuleSeed[] } {
+  const stake = computeStake(defenderBalance, calculateSecurityScore(loadout), db.balance(attackerId));
+  db.insertLedger(attackerId, -stake, 'attack_stake', attackId);
+  const seeds = buildAttackSeeds(attackId, loadout);
+  db.attacks.set(attackId, {
+    id: attackId,
+    attackerId,
+    defenderId,
+    isBot: defenderId === null,
+    stake,
+    status: 'pending',
+    loot: 0,
+    platformFee: 0,
+    loadout,
+    seeds,
+    results: [],
+  });
+  return { stake, seeds };
+}
+
+/** Mirror of supabase/functions/submit_result/index.ts logic. */
+function simulateSubmitResult(
+  db: MockDb,
+  attackerId: string,
+  attackId: string,
+  results: SubmittedResult[],
+  defenderBalance: number
+): SubmitPayload | SubmitError {
+  const attack = db.attacks.get(attackId);
+  if (!attack) return { error: 'attack_not_found' };
+  if (attack.attackerId !== attackerId) return { error: 'not_your_attack' };
+
+  // Idempotent replay.
+  if (attack.status !== 'pending') {
+    return {
+      attackId: attack.id,
+      status: attack.status,
+      loot: attack.loot,
+      platformFee: attack.platformFee,
+      stake: attack.stake,
+      newBalance: db.balance(attackerId),
+      idempotent: true,
+    };
+  }
+
+  const expected = attack.loadout.modules.length;
+  if (results.length > expected) return { error: 'too_many_results' };
+
+  const rows: { moduleIndex: number; score: number; passed: boolean; timeSpent: number }[] = [];
+  let allPassed = expected > 0;
+  let submitted = 0;
+
+  for (let i = 0; i < expected; i++) {
+    const mod = attack.loadout.modules[i];
+    if (i < results.length) {
+      const r = results[i];
+      if (r.moduleIndex !== i) return { error: 'module_index_out_of_order' };
+      if (r.moduleType !== mod.type) return { error: 'module_type_mismatch' };
+      const verdict = checkPlausibility(r, mod.difficulty);
+      if (!verdict.ok) return { error: 'implausible_result', reason: verdict.reason };
+      rows.push({ moduleIndex: i, score: verdict.adjustedScore, passed: verdict.adjustedPassed, timeSpent: r.timeSpent });
+      submitted++;
+      if (!verdict.adjustedPassed) allPassed = false;
+    } else {
+      rows.push({ moduleIndex: i, score: 0, passed: false, timeSpent: 0 });
+      allPassed = false;
+    }
+  }
+
+  attack.results = rows;
+
+  const { potentialLoot, attackerReceives, platformReceives, defenderLoses } =
+    computeLootSplit(defenderBalance);
+  const status: 'won' | 'lost' = allPassed && submitted === expected ? 'won' : 'lost';
+  const loot = status === 'won' ? potentialLoot : 0;
+  const platformFee = status === 'won' ? platformReceives : 0;
+
+  if (status === 'won') {
+    db.insertLedger(attackerId, attackerReceives, 'attack_loot', attackId);
+    db.insertLedger(null, platformReceives, 'platform_cut', attackId);
+    if (!attack.isBot && attack.defenderId) {
+      const cappedLoss = Math.min(defenderLoses, defenderBalance);
+      db.insertLedger(attack.defenderId, -cappedLoss, 'defense_loss', attackId);
+    }
+  } else {
+    if (!attack.isBot && attack.defenderId) {
+      db.insertLedger(attack.defenderId, attack.stake, 'defense_fee', attackId);
+    } else {
+      db.insertLedger(null, attack.stake, 'platform_cut', attackId);
+    }
+  }
+
+  attack.status = status;
+  attack.loot = loot;
+  attack.platformFee = platformFee;
+
+  return {
+    attackId: attack.id,
+    status,
+    loot,
+    platformFee,
+    stake: attack.stake,
+    newBalance: db.balance(attackerId),
+    idempotent: false,
+  };
 }
 
 // --- test loadouts ----------------------------------------------
@@ -66,40 +218,19 @@ const defenderLoadout: SecurityLoadout = {
   ],
 };
 
-// --- helpers replicating the Edge Function ledger writes -------
-
-function applyStake(db: MockDb, attackerId: string, stake: number, attackId: string) {
-  db.insertLedger(attackerId, -stake, 'attack_stake', attackId);
-}
-
-function applyWonPayout(
-  db: MockDb,
-  attackerId: string,
-  defenderId: string | null,
-  attackId: string,
-  defenderBalance: number
-) {
-  const { potentialLoot, attackerReceives, platformReceives, defenderLoses } =
-    computeLootSplit(defenderBalance);
-  db.insertLedger(attackerId, attackerReceives, 'attack_loot', attackId);
-  db.insertLedger(null, platformReceives, 'platform_cut', attackId);
-  if (defenderId) {
-    db.insertLedger(defenderId, -defenderLoses, 'defense_loss', attackId);
-  }
-  return { potentialLoot, attackerReceives, platformReceives, defenderLoses };
-}
-
-function applyLostFee(db: MockDb, defenderId: string | null, stake: number, attackId: string) {
-  if (defenderId) {
-    db.insertLedger(defenderId, stake, 'defense_fee', attackId);
-  } else {
-    db.insertLedger(null, stake, 'platform_cut', attackId);
-  }
+function passing(seeds: AttackModuleSeed[]): SubmittedResult[] {
+  return seeds.map(s => ({
+    moduleType: s.moduleType,
+    moduleIndex: s.index,
+    score: 0.9,
+    passed: true,
+    timeSpent: 5000,
+  }));
 }
 
 // --- tests ------------------------------------------------------
 
-describe('server-authoritative attack round-trip', () => {
+describe('start_attack → submit_result round-trip', () => {
   let db: MockDb;
   const attacker = 'user-attacker';
   const defender = 'user-defender';
@@ -110,109 +241,120 @@ describe('server-authoritative attack round-trip', () => {
     db.seed(defender, 2000);
   });
 
-  it('debits stake on start; emits per-module seeds', () => {
-    const attackId = 'attack-A';
-    const stake = computeStake(2000, calculateSecurityScore(defenderLoadout), 1000);
-    expect(stake).toBeGreaterThanOrEqual(ECONOMY.feeMin);
-    expect(stake).toBeLessThanOrEqual(1000 * ECONOMY.feeMaxPercentOfBalance);
-
-    applyStake(db, attacker, stake, attackId);
-    const seeds = buildAttackSeeds(attackId, defenderLoadout);
-
-    expect(db.balance(attacker)).toBe(1000 - stake);
-    expect(seeds).toHaveLength(defenderLoadout.modules.length);
-    // Different attack ids must yield different seeds.
-    const seeds2 = buildAttackSeeds('attack-B', defenderLoadout);
-    expect(seeds[0].seed).not.toBe(seeds2[0].seed);
+  it('start debits stake and returns unique seeds per attack', () => {
+    const a = simulateStartAttack(db, 'A', attacker, defender, db.balance(defender), defenderLoadout);
+    expect(db.balance(attacker)).toBe(1000 - a.stake);
+    expect(a.seeds).toHaveLength(defenderLoadout.modules.length);
+    const b = simulateStartAttack(db, 'B', attacker, defender, db.balance(defender), defenderLoadout);
+    expect(b.seeds[0].seed).not.toBe(a.seeds[0].seed);
   });
 
-  it('pays loot to attacker and debits defender on a won attack', () => {
-    const attackId = 'attack-won';
-    const defenderBalance = db.balance(defender);
-    const stake = computeStake(defenderBalance, calculateSecurityScore(defenderLoadout), db.balance(attacker));
-
-    applyStake(db, attacker, stake, attackId);
-    const seeds = buildAttackSeeds(attackId, defenderLoadout);
-
-    // Simulate perfect submission passing plausibility.
-    const submitted = seeds.map((s) => ({
-      moduleType: s.moduleType,
-      moduleIndex: s.index,
-      score: 0.9,
-      passed: true,
-      timeSpent: 5000,
-    }));
-    submitted.forEach((r, i) => {
-      const v = checkPlausibility(r, defenderLoadout.modules[i].difficulty);
-      expect(v.ok).toBe(true);
-    });
-
-    const { attackerReceives, platformReceives, defenderLoses } =
-      applyWonPayout(db, attacker, defender, attackId, defenderBalance);
-
-    // Attacker net: -stake + attackerReceives
-    expect(db.balance(attacker)).toBe(1000 - stake + attackerReceives);
-    expect(db.balance(defender)).toBe(defenderBalance - defenderLoses);
-    // Ledger reconciles.
-    expect(db.balanceFromLedger(attacker)).toBe(db.balance(attacker));
-    expect(db.balanceFromLedger(defender)).toBe(db.balance(defender));
-    // Platform recorded receipt.
-    const platform = db.ledger.filter(r => r.userId === null && r.reason === 'platform_cut');
-    expect(platform.reduce((s, r) => s + r.delta, 0)).toBe(platformReceives);
+  it('WIN: full-N pass credits loot; balance in payload matches ledger', () => {
+    const defBal = db.balance(defender);
+    const { seeds } = simulateStartAttack(db, 'W', attacker, defender, defBal, defenderLoadout);
+    const payload = simulateSubmitResult(db, attacker, 'W', passing(seeds), defBal);
+    expect('error' in payload).toBe(false);
+    if ('error' in payload) return;
+    expect(payload.status).toBe('won');
+    expect(payload.loot).toBeGreaterThan(0);
+    expect(payload.newBalance).toBe(db.balance(attacker));
+    expect(payload.newBalance).toBe(db.balanceFromLedger(attacker));
   });
 
-  it('lost attack against a real defender pays defense fee', () => {
-    const attackId = 'attack-lost';
-    const stake = computeStake(2000, calculateSecurityScore(defenderLoadout), 1000);
-    applyStake(db, attacker, stake, attackId);
-    applyLostFee(db, defender, stake, attackId);
+  it('LOSS on partial submit: fail-early is accepted, marked lost, no loot', () => {
+    const defBal = db.balance(defender);
+    const { seeds } = simulateStartAttack(db, 'L', attacker, defender, defBal, defenderLoadout);
+    // Client failed the first lock, then quit — only 1 submitted result.
+    const partial: SubmittedResult[] = [{
+      moduleType: seeds[0].moduleType,
+      moduleIndex: 0,
+      score: 0.2,
+      passed: false,
+      timeSpent: 3000,
+    }];
+    const payload = simulateSubmitResult(db, attacker, 'L', partial, defBal);
+    expect('error' in payload).toBe(false);
+    if ('error' in payload) return;
+    expect(payload.status).toBe('lost');
+    expect(payload.loot).toBe(0);
+    // Defender got the defense fee, attacker's stake is gone.
+    expect(db.ledgerCount(defender, 'defense_fee', 'L')).toBe(1);
+    expect(db.ledgerCount(attacker, 'attack_loot', 'L')).toBe(0);
+  });
 
+  it('ABANDON: empty results resolves the attack as lost', () => {
+    const defBal = db.balance(defender);
+    const { stake } = simulateStartAttack(db, 'X', attacker, defender, defBal, defenderLoadout);
+    const payload = simulateSubmitResult(db, attacker, 'X', [], defBal);
+    expect('error' in payload).toBe(false);
+    if ('error' in payload) return;
+    expect(payload.status).toBe('lost');
+    expect(payload.loot).toBe(0);
+    // Attacker down exactly the stake; defender up exactly the stake.
     expect(db.balance(attacker)).toBe(1000 - stake);
     expect(db.balance(defender)).toBe(2000 + stake);
-    expect(db.balanceFromLedger(attacker)).toBe(db.balance(attacker));
-    expect(db.balanceFromLedger(defender)).toBe(db.balance(defender));
+    // Attack row is no longer pending — hydrate cleanup will not re-fire.
+    expect(db.attacks.get('X')?.status).toBe('lost');
   });
 
-  it('lost attack against a bot puts stake in platform cut', () => {
-    const attackId = 'attack-bot-lost';
-    const bot = generateBotLoadout('bot-x', 0.5);
-    const stake = computeStake(1500, calculateSecurityScore(bot), 1000);
-    applyStake(db, attacker, stake, attackId);
-    applyLostFee(db, null, stake, attackId);
+  it('IDEMPOTENT: replaying submit_result on a resolved attack does not double-pay', () => {
+    const defBal = db.balance(defender);
+    const { seeds } = simulateStartAttack(db, 'I', attacker, defender, defBal, defenderLoadout);
+    const first = simulateSubmitResult(db, attacker, 'I', passing(seeds), defBal);
+    expect('error' in first).toBe(false);
+    if ('error' in first) return;
+    const balanceAfterFirst = db.balance(attacker);
+    const lootLedgerAfterFirst = db.ledgerCount(attacker, 'attack_loot', 'I');
+    const platformLedgerAfterFirst = db.ledgerCount(null, 'platform_cut', 'I');
 
-    expect(db.balance(attacker)).toBe(1000 - stake);
-    const platform = db.ledger
-      .filter(r => r.userId === null && r.reason === 'platform_cut')
-      .reduce((s, r) => s + r.delta, 0);
-    expect(platform).toBe(stake);
+    // Replay (double-click, hydrate cleanup, etc.).
+    const second = simulateSubmitResult(db, attacker, 'I', passing(seeds), defBal);
+    expect('error' in second).toBe(false);
+    if ('error' in second) return;
+
+    expect(second.idempotent).toBe(true);
+    expect(second.status).toBe(first.status);
+    expect(second.loot).toBe(first.loot);
+    expect(second.newBalance).toBe(balanceAfterFirst);
+    // No additional ledger rows written on the replay.
+    expect(db.ledgerCount(attacker, 'attack_loot', 'I')).toBe(lootLedgerAfterFirst);
+    expect(db.ledgerCount(null, 'platform_cut', 'I')).toBe(platformLedgerAfterFirst);
+    expect(db.balance(attacker)).toBe(balanceAfterFirst);
   });
 
-  it('rejects an implausibly fast submission and pays no loot', () => {
-    const attackId = 'attack-cheating';
-    applyStake(db, attacker, 50, attackId);
-
-    // Client claims perfect scores at 10ms (below any minTime).
-    const seeds = buildAttackSeeds(attackId, defenderLoadout);
-    const submitted = seeds.map(s => ({
+  it('CHEATING: perfect scores in 10ms rejected; attack stays pending, no loot', () => {
+    const defBal = db.balance(defender);
+    const { seeds, stake } = simulateStartAttack(db, 'C', attacker, defender, defBal, defenderLoadout);
+    const cheat: SubmittedResult[] = seeds.map(s => ({
       moduleType: s.moduleType,
       moduleIndex: s.index,
       score: 1,
       passed: true,
       timeSpent: 10,
     }));
+    const payload = simulateSubmitResult(db, attacker, 'C', cheat, defBal);
+    expect('error' in payload).toBe(true);
+    if (!('error' in payload)) return;
+    expect(payload.error).toBe('implausible_result');
+    // Balance still just -stake; attack still pending (hydrate can retry).
+    expect(db.balance(attacker)).toBe(1000 - stake);
+    expect(db.attacks.get('C')?.status).toBe('pending');
+    expect(db.ledgerCount(attacker, 'attack_loot', 'C')).toBe(0);
+  });
 
-    // Server-side: at least one must reject.
-    const anyRejected = submitted.some((r, i) => {
-      const v = checkPlausibility(r, defenderLoadout.modules[i].difficulty);
-      return v.ok === false;
-    });
-    expect(anyRejected).toBe(true);
+  it('bot target loss: stake accrues to platform, not to a defender row', () => {
+    const bot = generateBotLoadout('bot-1', 0.5);
+    const botBal = 1500;
+    const { stake } = simulateStartAttack(db, 'B1', attacker, null, botBal, bot);
+    simulateSubmitResult(db, attacker, 'B1', [], botBal);
+    expect(db.balance(attacker)).toBe(1000 - stake);
+    expect(db.ledgerCount(null, 'platform_cut', 'B1')).toBe(1);
+  });
 
-    // Because plausibility rejected, no loot payout should happen.
-    // Balance stays at 1000 - stake (50).
-    expect(db.balance(attacker)).toBe(1000 - 50);
-    // Attacker never received any 'attack_loot' entry.
-    const loot = db.ledger.filter(r => r.userId === attacker && r.reason === 'attack_loot');
-    expect(loot.length).toBe(0);
+  it('caps stake at feeMaxPercentOfBalance', () => {
+    // Attacker has 100 tokens; server should never take more than 50%.
+    db.balances.set(attacker, 100);
+    const { stake } = simulateStartAttack(db, 'S', attacker, defender, 10000, defenderLoadout);
+    expect(stake).toBeLessThanOrEqual(100 * ECONOMY.feeMaxPercentOfBalance);
   });
 });

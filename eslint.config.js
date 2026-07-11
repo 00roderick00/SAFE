@@ -33,4 +33,14 @@ export default defineConfig([
       'react-hooks/immutability': 'warn',
     },
   },
+  // Deno Edge Function handler files. They import from esm.sh URLs and
+  // use the Deno global; ESLint would otherwise complain about missing
+  // browser globals and non-npm module resolution. Type-safety here is
+  // covered by supabase's own Deno tooling, not by our client tsc.
+  {
+    files: ['supabase/functions/**/index.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
 ])

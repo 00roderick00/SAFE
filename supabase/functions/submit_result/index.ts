@@ -7,10 +7,15 @@
 //
 // Server:
 //   1. Loads the attack + its seeds/loadout.
-//   2. Runs plausibility checks against each submitted result.
-//   3. Applies all-or-nothing model.
-//   4. Writes ledger for loot/insurance/platform-cut.
-//   5. Records attack_results + marks the attack as won/lost.
+//   2. If already resolved, returns the current state (idempotent —
+//      the client can safely retry, double-click, or replay this
+//      call from hydrate cleanup without risking a double-pay).
+//   3. Runs plausibility checks against submitted results. `results`
+//      may be shorter than the loadout (early exit / abandon) —
+//      missing modules are recorded as failed.
+//   4. Applies all-or-nothing model.
+//   5. Writes ledger for loot/insurance/platform-cut.
+//   6. Records attack_results + marks the attack as won/lost.
 
 import { serve } from 'https://deno.land/std@0.203.0/http/server.ts';
 import {
@@ -27,6 +32,36 @@ import type { SecurityLoadout } from '../_shared/types.ts';
 interface SubmitBody {
   attackId: string;
   results: SubmittedResult[];
+}
+
+// The Supabase client type is intentionally loose here — this file is
+// bundled for Deno and imports the client from esm.sh; the full type
+// signature isn't available to our client tsc.
+async function resolvedPayload(supabase: any, attack: any, userId: string) {
+  const { data: rows } = await supabase
+    .from('attack_results')
+    .select('module_index, score, passed')
+    .eq('attack_id', attack.id)
+    .order('module_index', { ascending: true });
+  const { data: newSafe } = await supabase
+    .from('safes')
+    .select('balance')
+    .eq('owner_id', userId)
+    .maybeSingle();
+  return jsonResponse({
+    attackId: attack.id,
+    status: attack.status,
+    loot: attack.loot ?? 0,
+    platformFee: attack.platform_fee ?? 0,
+    stake: attack.stake,
+    newBalance: newSafe?.balance ?? null,
+    modules: (rows ?? []).map((r: { module_index: number; score: number; passed: boolean }) => ({
+      moduleIndex: r.module_index,
+      score: r.score,
+      passed: r.passed,
+    })),
+    idempotent: true,
+  });
 }
 
 serve(async (req) => {
@@ -56,12 +91,22 @@ serve(async (req) => {
     .maybeSingle();
   if (attackErr || !attack) return errorResponse('attack_not_found', 404);
   if (attack.attacker_id !== userId) return errorResponse('not_your_attack', 403);
-  if (attack.status !== 'pending') return errorResponse('attack_already_resolved', 409);
+
+  // Idempotency: already resolved? Return the current state so the
+  // client can update its UI. No ledger writes; no double-pay.
+  if (attack.status !== 'pending') {
+    return await resolvedPayload(supabase, attack, userId);
+  }
 
   const loadout: SecurityLoadout = attack.loadout_snapshot;
   const expectedModules = loadout.modules.length;
-  if (body.results.length !== expectedModules) {
-    return errorResponse('module_count_mismatch', 400, {
+
+  // Allow fewer results than expected — missing modules are treated
+  // as failed (all-or-nothing means the whole attack is lost anyway).
+  // This handles win (N=N), early-exit-on-fail (N<expected), and
+  // full abandon (N=0).
+  if (body.results.length > expectedModules) {
+    return errorResponse('too_many_results', 400, {
       expected: expectedModules,
       received: body.results.length,
     });
@@ -76,37 +121,58 @@ serve(async (req) => {
     passed: boolean;
     time_spent_ms: number;
   }[] = [];
-  let allPassed = true;
-  for (let i = 0; i < body.results.length; i++) {
-    const r = body.results[i];
-    if (r.moduleIndex !== i) return errorResponse('module_index_out_of_order', 400, { at: i });
+  let allPassed = expectedModules > 0; // vacuously true only if there ARE modules submitted
+  let submittedCount = 0;
+
+  for (let i = 0; i < expectedModules; i++) {
     const mod = loadout.modules[i];
-    if (r.moduleType !== mod.type) {
-      return errorResponse('module_type_mismatch', 400, { at: i });
+
+    if (i < body.results.length) {
+      // Client-submitted result for module i.
+      const r = body.results[i];
+      if (r.moduleIndex !== i) return errorResponse('module_index_out_of_order', 400, { at: i });
+      if (r.moduleType !== mod.type) return errorResponse('module_type_mismatch', 400, { at: i });
+
+      const verdict = checkPlausibility(r, mod.difficulty);
+      if (!verdict.ok) {
+        return errorResponse('implausible_result', 422, { at: i, reason: verdict.reason });
+      }
+      rows.push({
+        attack_id: attack.id,
+        module_index: i,
+        module_type: mod.type,
+        score: verdict.adjustedScore,
+        passed: verdict.adjustedPassed,
+        time_spent_ms: Math.min(180_000, Math.round(r.timeSpent)),
+      });
+      submittedCount++;
+      if (!verdict.adjustedPassed) allPassed = false;
+    } else {
+      // Missing result — count as a failed lock (attack abandoned or
+      // ended early on a prior failure).
+      rows.push({
+        attack_id: attack.id,
+        module_index: i,
+        module_type: mod.type,
+        score: 0,
+        passed: false,
+        time_spent_ms: 0,
+      });
+      allPassed = false;
     }
-    const verdict = checkPlausibility(r, mod.difficulty);
-    if (!verdict.ok) {
-      return errorResponse('implausible_result', 422, { at: i, reason: verdict.reason });
-    }
-    rows.push({
-      attack_id: attack.id,
-      module_index: i,
-      module_type: mod.type,
-      score: verdict.adjustedScore,
-      passed: verdict.adjustedPassed,
-      time_spent_ms: Math.min(180_000, Math.round(r.timeSpent)),
-    });
-    if (!verdict.adjustedPassed) allPassed = false;
   }
+
+  // If the client submitted nothing AND the loadout has zero modules
+  // (edge case — shouldn't happen since start_attack requires a
+  // loadout, but guard against divide-by-zero downstream), treat as
+  // lost.
+  if (expectedModules === 0) allPassed = false;
 
   // Determine outcome and defender balance for loot calc.
   let defenderBalance = 0;
+  let defenderOwnerId: string | null = null;
   if (attack.is_bot_target) {
-    // Bot: use the balance we recorded on the attack (jsonb has no
-    // balance field for bots today; derive from the frozen snapshot).
     defenderBalance = attack.bot_target?.balance ?? 0;
-    // Bot balances aren't currently persisted with the attack; fall
-    // back to a reasonable value if missing.
     if (!defenderBalance) defenderBalance = 1500;
   } else if (attack.defender_safe_id) {
     const { data: def } = await supabase
@@ -115,22 +181,24 @@ serve(async (req) => {
       .eq('id', attack.defender_safe_id)
       .maybeSingle();
     defenderBalance = def?.balance ?? 0;
+    defenderOwnerId = def?.owner_id ?? null;
   }
 
   const { potentialLoot, attackerReceives, platformReceives, defenderLoses } =
     computeLootSplit(defenderBalance);
 
-  const status: 'won' | 'lost' = allPassed ? 'won' : 'lost';
+  const status: 'won' | 'lost' = allPassed && submittedCount === expectedModules ? 'won' : 'lost';
   const loot = status === 'won' ? potentialLoot : 0;
   const platformFee = status === 'won' ? platformReceives : 0;
 
-  // Persist attack_results (upsert-safe on the PK).
+  // Persist attack_results (PK on attack_id + module_index protects
+  // against a same-request double insert but not against a retried
+  // request racing — we guard with the status='pending' check above).
   const { error: resultsErr } = await supabase.from('attack_results').insert(rows);
   if (resultsErr) return errorResponse('results_insert_failed', 500, { detail: resultsErr.message });
 
   // Ledger effects.
   if (status === 'won') {
-    // Attacker earns loot minus platform cut.
     await supabase.rpc('insert_ledger', {
       p_user_id: userId,
       p_delta: attackerReceives,
@@ -138,7 +206,6 @@ serve(async (req) => {
       p_ref_type: 'attack',
       p_ref_id: attack.id,
     });
-    // Platform cut recorded with null user.
     await supabase.rpc('insert_ledger', {
       p_user_id: null,
       p_delta: platformReceives,
@@ -146,78 +213,56 @@ serve(async (req) => {
       p_ref_type: 'attack',
       p_ref_id: attack.id,
     });
-    // Real defender pays out loot (clamped at principalFloor).
-    if (!attack.is_bot_target && attack.defender_safe_id) {
-      const { data: def } = await supabase
-        .from('safes')
-        .select('balance, owner_id')
-        .eq('id', attack.defender_safe_id)
-        .maybeSingle();
-      if (def) {
-        // Note: principalFloor handling would go here. Skipped for MVP —
-        // insert_ledger allows balance to underflow only if we let it;
-        // safes.balance has a >= 0 check so a huge loot event will
-        // fail. Cap loss to available balance.
-        const cappedLoss = Math.min(defenderLoses, def.balance);
-        await supabase.rpc('insert_ledger', {
-          p_user_id: def.owner_id,
-          p_delta: -cappedLoss,
-          p_reason: 'defense_loss',
-          p_ref_type: 'attack',
-          p_ref_id: attack.id,
-        });
+    if (!attack.is_bot_target && defenderOwnerId) {
+      const cappedLoss = Math.min(defenderLoses, defenderBalance);
+      await supabase.rpc('insert_ledger', {
+        p_user_id: defenderOwnerId,
+        p_delta: -cappedLoss,
+        p_reason: 'defense_loss',
+        p_ref_type: 'attack',
+        p_ref_id: attack.id,
+      });
 
-        // Insurance payout if defender has an active policy.
-        const { data: policy } = await supabase
+      // Insurance payout if defender has an active policy.
+      const { data: policy } = await supabase
+        .from('insurance_policies')
+        .select('*')
+        .eq('owner_id', defenderOwnerId)
+        .gt('expires_at', new Date().toISOString())
+        .gt('claims_remaining', 0)
+        .order('purchased_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (policy) {
+        const payout = Math.min(
+          Math.round(cappedLoss * policy.coverage),
+          policy.max_payout
+        );
+        await supabase.rpc('insert_ledger', {
+          p_user_id: defenderOwnerId,
+          p_delta: payout,
+          p_reason: 'insurance_payout',
+          p_ref_type: 'policy',
+          p_ref_id: policy.id,
+        });
+        await supabase
           .from('insurance_policies')
-          .select('*')
-          .eq('owner_id', def.owner_id)
-          .gt('expires_at', new Date().toISOString())
-          .gt('claims_remaining', 0)
-          .order('purchased_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (policy) {
-          const payout = Math.min(
-            Math.round(cappedLoss * policy.coverage),
-            policy.max_payout
-          );
-          await supabase.rpc('insert_ledger', {
-            p_user_id: def.owner_id,
-            p_delta: payout,
-            p_reason: 'insurance_payout',
-            p_ref_type: 'policy',
-            p_ref_id: policy.id,
-          });
-          await supabase
-            .from('insurance_policies')
-            .update({ claims_remaining: policy.claims_remaining - 1 })
-            .eq('id', policy.id);
-        }
+          .update({ claims_remaining: policy.claims_remaining - 1 })
+          .eq('id', policy.id);
       }
     }
   } else {
-    // Stake was already debited on start_attack. Defender gets a
-    // fee credit when the attacker was a real player attacking a
-    // real safe (i.e. not attacking a bot). This is the "defense
-    // fee earned" surface.
-    if (!attack.is_bot_target && attack.defender_safe_id) {
-      const { data: def } = await supabase
-        .from('safes')
-        .select('owner_id')
-        .eq('id', attack.defender_safe_id)
-        .maybeSingle();
-      if (def) {
-        await supabase.rpc('insert_ledger', {
-          p_user_id: def.owner_id,
-          p_delta: attack.stake,
-          p_reason: 'defense_fee',
-          p_ref_type: 'attack',
-          p_ref_id: attack.id,
-        });
-      }
+    // Loss / abandon: stake was already debited at start_attack.
+    // Defender gets a fee credit iff attack was against a real player.
+    if (!attack.is_bot_target && defenderOwnerId) {
+      await supabase.rpc('insert_ledger', {
+        p_user_id: defenderOwnerId,
+        p_delta: attack.stake,
+        p_reason: 'defense_fee',
+        p_ref_type: 'attack',
+        p_ref_id: attack.id,
+      });
     } else {
-      // Stake against a bot with no counterparty: platform absorbs.
       await supabase.rpc('insert_ledger', {
         p_user_id: null,
         p_delta: attack.stake,
@@ -234,7 +279,6 @@ serve(async (req) => {
     .update({ status, loot, platform_fee: platformFee, resolved_at: new Date().toISOString() })
     .eq('id', attack.id);
 
-  // Fetch attacker's new balance so the client can update immediately.
   const { data: newSafe } = await supabase
     .from('safes')
     .select('balance')
@@ -253,5 +297,6 @@ serve(async (req) => {
       score: r.score,
       passed: r.passed,
     })),
+    idempotent: false,
   });
 });

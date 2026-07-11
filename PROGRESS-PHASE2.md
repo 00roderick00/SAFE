@@ -94,6 +94,46 @@ The whole point of Phase 2 is that **editing localStorage can no longer change y
 
 If all five checks pass, you've hit the Phase 2 Definition of Done from PHASE2.md.
 
+## Hotfix — attack resolution bugs (2026-07-11)
+
+Three live-game bugs shipped in the initial Phase 2 build:
+
+1. **Losses never resolved.** `completeServerAttack` submitted only the results the client had produced. On an early exit (fail lock 1 of 3) that's 1 result, but `submit_result` required exactly N → 400 `module_count_mismatch` → attack stayed `pending` forever, stake gone.
+2. **Cancel/back button abandoned the attack.** `handleCancel` only did `resetHeist()` + `navigate()`; the server never heard about it → another `pending` orphan.
+3. **Balance didn't refresh** on return from an attack, only on full page reload — because `submit_result` errored on losses so no `newBalance` payload came back.
+
+Fixes shipped in the same commit as this section:
+
+- `submit_result` Edge Function:
+  * Accepts `results.length ≤ expected`. Missing modules are recorded server-side with `{score: 0, passed: false, timeSpent: 0}`, marking the attack `lost`. Wins still require the full `N == expected`.
+  * **Idempotent**: calling `submit_result` on an already-resolved attack returns the current `{status, loot, platformFee, newBalance}` with `idempotent: true` instead of a 409. No new ledger rows — no double-pay possible even under retry, double-click, or hydrate cleanup.
+- `AttackScreen`:
+  * `handleCancel` now calls `completeServerAttack` before navigating, so back-button = attack resolves as lost.
+  * `rehydrateBalance` helper trusts `payload.newBalance` first, falls back to a fresh `api.getSafe` read. Called after both `handleComplete` and `handleCancel`.
+- `useHydrateFromServer`: on every session load, lists any `status=pending` attacks for the user and resolves them by posting `submit_result` with empty results. Your existing dangling attack is cleaned up on next login.
+- Tests (`supabase/functions/attack.roundtrip.test.ts`): full model of the Edge Function's decision tree in-memory. Covers WIN, LOSS-on-partial, ABANDON (empty), IDEMPOTENT replay, cheating rejection, bot-target loss, and stake-cap enforcement — 8 scenarios, 97 tests total.
+
+**No new manual deploy step is required beyond redeploying the two changed functions:**
+
+```sh
+supabase functions deploy submit_result
+```
+
+(No SQL change; the ledger and attack tables are unchanged.)
+
+**Manual verification for the hotfix:**
+
+1. In a signed-in browser, start an attack against a bot, deliberately fail lock 1, then wait for the "Heist Failed" complete screen and click Continue.
+   - Network tab: one `POST /functions/v1/submit_result` with 1 result. Response is 200 with `status: "lost"`.
+   - Home screen: balance decreased by exactly the stake and reflects immediately (no reload).
+2. Start another attack, then hit the back arrow mid-play.
+   - Network tab: one `submit_result` fires with the partial or empty results. Response 200 `lost`.
+   - Balance updates immediately.
+3. Win a heist (attack a low-difficulty bot and pass all locks).
+   - Balance shown after Continue equals stake-loss + loot-net-of-cut. Refreshing the page shows the same balance.
+4. **Existing dangling attack**: next time you sign in, watch the console for `[hydrate] pending-attack cleanup` — no errors means it was resolved as lost silently.
+5. **Idempotency**: in devtools, double-click Continue on a completed heist, or replay the `submit_result` POST once. Balance does not double-credit.
+
 ## Known trade-offs & TODOs
 
 - **Insurance purchase is two calls, not one.** `api.purchaseInsurance` inserts the policy and then debits via `insert_ledger`. If the second call fails you end up with a paid-for policy and no debit — the opposite (no policy, debit) is not possible because of the order. TODO: extract to a `buy_insurance` Edge Function so both writes go through a single stored procedure.

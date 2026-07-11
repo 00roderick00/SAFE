@@ -169,6 +169,17 @@ export const api = {
     return data;
   },
 
+  async listPendingAttacks(userId: string): Promise<{ id: string; created_at: string }[]> {
+    const { data, error } = await supabase
+      .from('attacks')
+      .select('id, created_at')
+      .eq('attacker_id', userId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  },
+
   async purchaseInsurance(userId: string, plan: {
     tier: string;
     coverage: number;

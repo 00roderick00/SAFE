@@ -5,7 +5,15 @@ import { usePlayerStore } from '../store/playerStore';
 
 /**
  * On every fresh session, hydrate the client stores from the server.
- * Runs the one-shot localStorage→DB migration for first-login users.
+ * Runs three cleanup steps on first render for a signed-in user:
+ *   1. Idempotent localStorage → DB migration (Phase 1 → Phase 2).
+ *   2. Resolve any dangling `status = 'pending'` attacks for this
+ *      user by submitting empty results. submit_result pads the
+ *      missing modules as failed, marks the attack as `lost`, and
+ *      returns the fresh balance — so we don't need a separate
+ *      cancel endpoint.
+ *   3. Pull the current safe row + profile as the source of truth
+ *      and set them on the client store.
  */
 export function useHydrateFromServer(session: Session | null) {
   useEffect(() => {
@@ -15,7 +23,7 @@ export function useHydrateFromServer(session: Session | null) {
 
     (async () => {
       try {
-        // 1. Try to migrate any existing local state (idempotent).
+        // 1. One-shot migration from localStorage.
         const state = usePlayerStore.getState();
         await migrateLocalIfNeeded({
           userId,
@@ -23,7 +31,26 @@ export function useHydrateFromServer(session: Session | null) {
           securityLoadout: state.securityLoadout,
         });
 
-        // 2. Hydrate the store from the server (source of truth).
+        // 2. Resolve any dangling pending attacks. Doing this BEFORE
+        // hydrating the safe so the balance we read reflects the
+        // post-resolution ledger.
+        try {
+          const pending = await api.listPendingAttacks(userId);
+          for (const attack of pending) {
+            if (cancelled) return;
+            try {
+              await api.submitResult({ attackId: attack.id, results: [] });
+            } catch (submitErr) {
+              // eslint-disable-next-line no-console
+              console.warn('[hydrate] failed to resolve dangling attack', attack.id, submitErr);
+            }
+          }
+        } catch (listErr) {
+          // eslint-disable-next-line no-console
+          console.warn('[hydrate] pending-attack cleanup failed', listErr);
+        }
+
+        // 3. Hydrate from server truth.
         const safe = await api.getSafe(userId);
         const profile = await api.getProfile(userId);
         if (cancelled) return;
@@ -37,8 +64,6 @@ export function useHydrateFromServer(session: Session | null) {
           });
         }
       } catch (err) {
-        // Non-fatal: leave the client on cached local values so the
-        // UI still works. The next successful call will hydrate.
         // eslint-disable-next-line no-console
         console.warn('[hydrate] failed', err);
       }
