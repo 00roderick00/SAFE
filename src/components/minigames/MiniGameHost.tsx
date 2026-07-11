@@ -3,6 +3,7 @@ import { AlertTriangle } from 'lucide-react';
 import { MiniGameResult, ModuleType } from '../../types';
 import { getMiniGameComponent } from './registry';
 import { MiniGameErrorBoundary } from './MiniGameErrorBoundary';
+import { DslRunner } from './DslRunner';
 
 interface Props {
   moduleType: ModuleType;
@@ -13,6 +14,9 @@ interface Props {
    *  through to the engine which reads any fields it supports and
    *  ignores the rest. */
   config?: unknown;
+  /** When set to 'dsl_program', the DSL runtime renders the game
+   *  from `config`, bypassing the engine registry. */
+  mode?: 'engine_config' | 'dsl_program';
   onComplete: (result: MiniGameResult) => void;
   onFail: (result: MiniGameResult) => void;
 }
@@ -30,9 +34,20 @@ export const MiniGameHost = ({
   difficulty,
   seed,
   config,
+  mode,
   onComplete,
   onFail,
 }: Props) => {
+  // Phase 3B: DSL games render through a fixed interpreter, not
+  // through one of the built-in engine components.
+  if (mode === 'dsl_program') {
+    return (
+      <MiniGameErrorBoundary moduleType={moduleType} moduleId={moduleId} onFail={onFail}>
+        <DslRunner difficulty={difficulty} seed={seed} config={config} onComplete={onComplete} />
+      </MiniGameErrorBoundary>
+    );
+  }
+
   const Component = getMiniGameComponent(moduleType);
 
   if (!Component) {

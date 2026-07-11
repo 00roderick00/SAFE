@@ -1,19 +1,26 @@
 // POST /functions/v1/generate_game
 //
-// Body: { prompt: string, baseEngine: string, name?: string,
-//         statedDifficulty?: number }
+// Body: {
+//   prompt: string,
+//   name: string,
+//   statedDifficulty?: number,
+//   mode?: 'engine_config' | 'dsl_program' (default: 'engine_config'),
+//   baseEngine?: string   (required when mode='engine_config')
+// }
 //
-// 1. Ask Anthropic (server-side, using ANTHROPIC_API_KEY secret)
-//    to emit a JSON config that fits ENGINE_SCHEMAS[baseEngine].
-// 2. Validate the response against the schema. Reject anything
-//    out of range. AI output is DATA — never executed.
-// 3. Calibrate: run the per-engine solve-rate simulator. If the
-//    result lands in the target band, mark the row `live`; if
-//    not, mark it `rejected` so it cannot guard a safe.
-// 4. Persist a row in `custom_games` and return it.
+// Flow:
+//   1. Content moderation on title + prompt. Unsafe → persist a
+//      `rejected` custom_games row with reason='moderation' and
+//      short-circuit.
+//   2. Route to the chosen mode:
+//        - engine_config: Anthropic → validate against
+//          ENGINE_SCHEMAS → 3A heuristic calibration.
+//        - dsl_program: Anthropic → validateDsl → REAL headless
+//          runs of the DSL runtime (calibrateDsl).
+//   3. Persist a custom_games row. status=live iff calibration
+//      passes; else rejected. Return the row + calibration.
 //
-// The endpoint always returns a row (even on calibration failure)
-// so the client can show WHY it was rejected.
+// AI output is DATA in both modes — never executed as code.
 
 import { serve } from 'https://deno.land/std@0.203.0/http/server.ts';
 import {
@@ -26,15 +33,20 @@ import {
 import { callAnthropic, extractJsonObject } from '../_shared/anthropic.ts';
 import { ENGINE_SCHEMAS, validateConfig, isSupportedEngine } from '../_shared/config-schemas.ts';
 import { calibrate } from '../_shared/calibration.ts';
+import { validateDsl, DSL_LIMITS } from '../_shared/dsl.ts';
+import { calibrateDsl } from '../_shared/dsl-runtime.ts';
+import { moderate } from '../_shared/moderation.ts';
 
 interface GenerateBody {
   prompt?: string;
-  baseEngine?: string;
   name?: string;
   statedDifficulty?: number;
+  mode?: 'engine_config' | 'dsl_program';
+  baseEngine?: string;
 }
 
 const MAX_PROMPT_LEN = 1000;
+const MAX_NAME_LEN = 60;
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -52,8 +64,8 @@ serve(async (req) => {
   }
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-  const baseEngine = typeof body.baseEngine === 'string' ? body.baseEngine : '';
-  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 60) : '';
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, MAX_NAME_LEN) : '';
+  const mode = body.mode === 'dsl_program' ? 'dsl_program' : 'engine_config';
   const statedDifficulty = typeof body.statedDifficulty === 'number'
     ? Math.max(0, Math.min(1, body.statedDifficulty))
     : 0.5;
@@ -61,103 +73,215 @@ serve(async (req) => {
   if (!prompt || prompt.length > MAX_PROMPT_LEN) {
     return errorResponse('prompt_out_of_range', 400, { maxLength: MAX_PROMPT_LEN });
   }
-  if (!isSupportedEngine(baseEngine)) {
-    return errorResponse('unsupported_engine', 400, {
-      supported: Object.keys(ENGINE_SCHEMAS),
-    });
-  }
   if (!name) return errorResponse('missing_name', 400);
 
-  const schema = ENGINE_SCHEMAS[baseEngine];
+  // ------- Moderation (both modes) --------------------------------
+  const mod = await moderate(name, prompt);
+  const supabase = serviceClient();
+  if (!mod.safe) {
+    const { data: rejectedRow } = await supabase
+      .from('custom_games')
+      .insert({
+        creator_id: userId,
+        name,
+        description: prompt.slice(0, 400),
+        prompt,
+        base_engine: mode === 'engine_config' ? (body.baseEngine ?? 'maze') : 'maze',
+        mode,
+        config: {},
+        dsl_program: null,
+        stated_difficulty: statedDifficulty,
+        calibrated_difficulty: null,
+        calibration_stats: {
+          passes: false,
+          reason: 'moderation',
+          moderation: mod,
+        },
+        status: 'rejected',
+      })
+      .select()
+      .single();
+    return jsonResponse({
+      customGame: rejectedRow,
+      calibration: { passes: false, reason: 'moderation', moderation: mod },
+      moderation: mod,
+    });
+  }
 
-  // Build the AI prompt. Keep it short + strict: describe the
-  // engine, list the exact JSON keys the model may set (with types
-  // + ranges), and demand a bare JSON object with no prose.
-  const fieldSpec = Object.entries(schema.fields)
-    .map(([key, field]) => {
-      if (field.type === 'integer' || field.type === 'number') {
-        const range = `min ${field.min ?? '-∞'}, max ${field.max ?? '∞'}`;
-        return `- "${key}": ${field.type} (${range})${schema.required.includes(key) ? ' [required]' : ''}`;
-      }
-      if (field.type === 'string') {
-        const opts = field.enum ? ` one of [${field.enum.join(', ')}]` : '';
-        return `- "${key}": string${opts}${schema.required.includes(key) ? ' [required]' : ''}`;
-      }
-      if (field.type === 'boolean') {
-        return `- "${key}": boolean${schema.required.includes(key) ? ' [required]' : ''}`;
-      }
-      if (field.type === 'array') {
-        return `- "${key}": array of ${field.item.type}${schema.required.includes(key) ? ' [required]' : ''}`;
-      }
-      return `- "${key}": ${JSON.stringify(field)}`;
-    })
-    .join('\n');
+  // ------- Engine-config mode (3A) --------------------------------
+  if (mode === 'engine_config') {
+    const baseEngine = typeof body.baseEngine === 'string' ? body.baseEngine : '';
+    if (!isSupportedEngine(baseEngine)) {
+      return errorResponse('unsupported_engine', 400, {
+        supported: Object.keys(ENGINE_SCHEMAS),
+      });
+    }
+    const schema = ENGINE_SCHEMAS[baseEngine];
+    const fieldSpec = Object.entries(schema.fields)
+      .map(([key, field]) => {
+        if (field.type === 'integer' || field.type === 'number') {
+          const range = `min ${field.min ?? '-∞'}, max ${field.max ?? '∞'}`;
+          return `- "${key}": ${field.type} (${range})${schema.required.includes(key) ? ' [required]' : ''}`;
+        }
+        if (field.type === 'string') {
+          const opts = field.enum ? ` one of [${field.enum.join(', ')}]` : '';
+          return `- "${key}": string${opts}${schema.required.includes(key) ? ' [required]' : ''}`;
+        }
+        if (field.type === 'boolean') {
+          return `- "${key}": boolean${schema.required.includes(key) ? ' [required]' : ''}`;
+        }
+        if (field.type === 'array') {
+          return `- "${key}": array of ${field.item.type}${schema.required.includes(key) ? ' [required]' : ''}`;
+        }
+        return `- "${key}": ${JSON.stringify(field)}`;
+      })
+      .join('\n');
 
-  const systemPrompt =
-    `You configure minigames for the SAFE game platform. You emit ONE JSON object matching the requested engine's schema, and NOTHING ELSE — no markdown, no prose, no fenced blocks.\n\n` +
-    `Engine: ${baseEngine} — ${schema.description}\n\n` +
-    `Allowed fields:\n${fieldSpec}\n\n` +
-    `Stated difficulty target: ${statedDifficulty.toFixed(2)} (0=trivial, 1=impossible). Aim for a config that a skilled player solves ~30-70% of the time; the server rejects anything outside that band.`;
+    const systemPrompt =
+      `You configure minigames for SAFE. Emit ONE JSON object matching the requested engine's schema; NO markdown, NO fences, NO prose.\n\n` +
+      `Engine: ${baseEngine} — ${schema.description}\n\nAllowed fields:\n${fieldSpec}\n\n` +
+      `Stated difficulty: ${statedDifficulty.toFixed(2)}. Aim for a config a skilled player beats ~30-70% of the time; the server rejects anything outside that band.`;
 
-  let raw: string;
+    let raw: string;
+    try {
+      const res = await callAnthropic({
+        system: systemPrompt,
+        messages: [{ role: 'user', content: prompt }],
+        maxTokens: 400,
+      });
+      raw = res.text;
+    } catch (err) {
+      return errorResponse('anthropic_call_failed', 502, {
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = extractJsonObject(raw);
+    } catch {
+      return errorResponse('anthropic_response_not_json', 502, { raw: raw.slice(0, 400) });
+    }
+
+    const validated = validateConfig(baseEngine, parsed);
+    if (!validated.ok) {
+      return errorResponse('config_invalid', 422, { errors: validated.errors });
+    }
+
+    const calibration = calibrate(baseEngine, validated.config, {
+      seed: `${userId}:${Date.now()}`,
+    });
+    const status = calibration.passes ? 'live' : 'rejected';
+
+    const { data: row, error: insertErr } = await supabase
+      .from('custom_games')
+      .insert({
+        creator_id: userId,
+        name,
+        description: prompt.slice(0, 400),
+        prompt,
+        base_engine: baseEngine,
+        mode: 'engine_config',
+        config: validated.config,
+        stated_difficulty: statedDifficulty,
+        calibrated_difficulty: calibration.calibratedDifficulty,
+        calibration_stats: { ...calibration, moderation: mod },
+        status,
+      })
+      .select()
+      .single();
+    if (insertErr || !row) {
+      return errorResponse('custom_game_insert_failed', 500, { detail: insertErr?.message });
+    }
+    return jsonResponse({
+      customGame: row,
+      calibration,
+      moderation: mod,
+      aiRaw: raw.slice(0, 500),
+    });
+  }
+
+  // ------- DSL mode (3B) ------------------------------------------
+  const dslSystemPrompt =
+    `You design short 2D-grid minigames for SAFE. Output ONE JSON object matching the DSL schema; NO markdown, NO fences, NO prose.\n\n` +
+    `Schema:\n` +
+    `{\n` +
+    `  "version": 1,\n` +
+    `  "board": { "width": int ${DSL_LIMITS.boardMin}-${DSL_LIMITS.boardMax}, "height": int ${DSL_LIMITS.boardMin}-${DSL_LIMITS.boardMax} },\n` +
+    `  "entities": [\n` +
+    `    { "id": "player", "kind": "player", "x": int, "y": int, "movement": { "type": "input" } },\n` +
+    `    // Optional additional entities (up to ${DSL_LIMITS.entityMax} total):\n` +
+    `    { "id": "...", "kind": "wall" | "token" | "goal", "x": int, "y": int, "movement": { "type": "static" } },\n` +
+    `    { "id": "...", "kind": "enemy", "x": int, "y": int, "movement": { "type": "random" | "chase", "speed": int ${DSL_LIMITS.speedMin}-${DSL_LIMITS.speedMax} } }\n` +
+    `  ],\n` +
+    `  "timeLimit": int ${DSL_LIMITS.timeLimitMin}-${DSL_LIMITS.timeLimitMax},\n` +
+    `  "winCondition": "collect_all_tokens" | "reach_goal" | "survive"\n` +
+    `}\n\n` +
+    `Rules:\n` +
+    `- Exactly one player.\n` +
+    `- All positions within board.\n` +
+    `- No two entities on the same spawn cell.\n` +
+    `- If winCondition=collect_all_tokens, include >= 1 token.\n` +
+    `- If winCondition=reach_goal, include >= 1 goal.\n` +
+    `- Stated difficulty: ${statedDifficulty.toFixed(2)}. Aim for a solve-rate in [0.30, 0.70]; the server rejects outside that band.`;
+
+  let dslRaw: string;
   try {
     const res = await callAnthropic({
-      system: systemPrompt,
+      system: dslSystemPrompt,
       messages: [{ role: 'user', content: prompt }],
-      maxTokens: 400,
+      maxTokens: 1200,
     });
-    raw = res.text;
+    dslRaw = res.text;
   } catch (err) {
     return errorResponse('anthropic_call_failed', 502, {
       detail: err instanceof Error ? err.message : String(err),
     });
   }
 
-  let parsed: unknown;
+  let dslParsed: unknown;
   try {
-    parsed = extractJsonObject(raw);
+    dslParsed = extractJsonObject(dslRaw);
   } catch {
-    return errorResponse('anthropic_response_not_json', 502, { raw: raw.slice(0, 400) });
+    return errorResponse('anthropic_response_not_json', 502, { raw: dslRaw.slice(0, 400) });
   }
 
-  const validated = validateConfig(baseEngine, parsed);
-  if (!validated.ok) {
-    return errorResponse('config_invalid', 422, { errors: validated.errors });
+  const dslValidated = validateDsl(dslParsed);
+  if (!dslValidated.ok) {
+    return errorResponse('dsl_invalid', 422, { errors: dslValidated.errors });
   }
 
-  const calibration = calibrate(baseEngine, validated.config, {
-    seed: `${userId}:${Date.now()}`,
+  const dslCalibration = calibrateDsl(dslValidated.program, {
+    seedPrefix: `${userId}:${Date.now()}`,
   });
+  const dslStatus = dslCalibration.passes ? 'live' : 'rejected';
 
-  const status = calibration.passes ? 'live' : 'rejected';
-
-  const supabase = serviceClient();
-  const { data: row, error: insertErr } = await supabase
+  const { data: dslRow, error: dslErr } = await supabase
     .from('custom_games')
     .insert({
       creator_id: userId,
       name,
       description: prompt.slice(0, 400),
       prompt,
-      base_engine: baseEngine,
-      config: validated.config,
+      base_engine: 'maze', // nominal — DSL runtime drives gameplay
+      mode: 'dsl_program',
+      config: {},
+      dsl_program: dslValidated.program,
       stated_difficulty: statedDifficulty,
-      calibrated_difficulty: calibration.calibratedDifficulty,
-      calibration_stats: calibration,
-      status,
+      calibrated_difficulty: dslCalibration.calibratedDifficulty,
+      calibration_stats: { ...dslCalibration, moderation: mod },
+      status: dslStatus,
     })
     .select()
     .single();
-
-  if (insertErr || !row) {
-    return errorResponse('custom_game_insert_failed', 500, {
-      detail: insertErr?.message,
-    });
+  if (dslErr || !dslRow) {
+    return errorResponse('custom_game_insert_failed', 500, { detail: dslErr?.message });
   }
 
   return jsonResponse({
-    customGame: row,
-    calibration,
-    aiRaw: raw.slice(0, 500), // for debugging / display; NOT re-executed
+    customGame: dslRow,
+    calibration: dslCalibration,
+    moderation: mod,
+    aiRaw: dslRaw.slice(0, 800),
   });
 });

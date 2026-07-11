@@ -36,7 +36,8 @@ export const MarketplaceScreen = () => {
 
   const equip = async (g: PublicCustomGame, slotIndex: number) => {
     const newModules = [...securityLoadout.modules];
-    const config = g.config as Record<string, unknown> | undefined;
+    const isDsl = g.mode === 'dsl_program';
+    const payload = isDsl ? g.dsl_program : g.config;
     newModules[slotIndex] = {
       id: `${g.id}-slot-${slotIndex}`,
       type: g.base_engine as never,
@@ -45,7 +46,11 @@ export const MarketplaceScreen = () => {
       name: g.name,
       description: g.description,
       customGameId: g.id,
-      customConfig: { baseEngine: g.base_engine as never, config: config ?? {} },
+      customConfig: {
+        baseEngine: g.base_engine as never,
+        config: payload ?? {},
+        mode: g.mode,
+      },
     };
     const { updateSecurityModule } = usePlayerStore.getState();
     updateSecurityModule(slotIndex, newModules[slotIndex]);

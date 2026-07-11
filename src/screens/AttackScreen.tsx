@@ -307,6 +307,7 @@ export const AttackScreen = () => {
                 difficulty={currentModule.difficulty}
                 seed={seed}
                 config={currentModule.customConfig?.config}
+                mode={currentModule.customConfig?.mode}
                 onComplete={handleModuleComplete}
                 onFail={handleModuleComplete}
               />

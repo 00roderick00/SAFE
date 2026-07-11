@@ -31,6 +31,11 @@
   "exclude": [
     "supabase/functions/**/index.ts",
     "supabase/functions/_shared/http.ts",
-    "supabase/functions/_shared/anthropic.ts"
+    "supabase/functions/_shared/anthropic.ts",
+    "supabase/functions/_shared/moderation.ts",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "supabase/functions/**/*.test.ts",
+    "supabase/functions/**/*.test.tsx"
   ]
 }

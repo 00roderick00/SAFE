@@ -36,6 +36,7 @@ export const CustomGameScreen = () => {
   const [prompt, setPrompt] = useState('');
   const [engine, setEngine] = useState<string>('maze');
   const [statedDifficulty, setStatedDifficulty] = useState(0.5);
+  const [mode, setMode] = useState<'engine_config' | 'dsl_program'>('engine_config');
 
   useEffect(() => {
     if (!session) return;
@@ -61,9 +62,10 @@ export const CustomGameScreen = () => {
     try {
       const res = await api.generateGame({
         prompt: prompt.trim(),
-        baseEngine: engine,
         name: name.trim(),
         statedDifficulty,
+        mode,
+        ...(mode === 'engine_config' ? { baseEngine: engine } : {}),
       });
       setGames((prev) => [res.customGame, ...prev]);
       setName('');
@@ -141,24 +143,54 @@ export const CustomGameScreen = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Base engine</label>
+                  <label className="block text-sm font-medium mb-1">Mode</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {SUPPORTED_ENGINES.map((e) => (
-                      <button
-                        key={e.id}
-                        type="button"
-                        onClick={() => setEngine(e.id)}
-                        disabled={busy}
-                        className={`text-left p-2 rounded-lg border ${
-                          engine === e.id ? 'bg-primary/20 border-primary' : 'bg-surface-light border-border'
-                        }`}
-                      >
-                        <div className="text-sm font-medium">{e.label}</div>
-                        <div className="text-xs text-text-dim">{e.blurb}</div>
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setMode('engine_config')}
+                      disabled={busy}
+                      className={`text-left p-2 rounded-lg border ${
+                        mode === 'engine_config' ? 'bg-primary/20 border-primary' : 'bg-surface-light border-border'
+                      }`}
+                    >
+                      <div className="text-sm font-medium">Tune an engine</div>
+                      <div className="text-xs text-text-dim">Pick one of our 6 engines and let AI configure it.</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMode('dsl_program')}
+                      disabled={busy}
+                      className={`text-left p-2 rounded-lg border ${
+                        mode === 'dsl_program' ? 'bg-primary/20 border-primary' : 'bg-surface-light border-border'
+                      }`}
+                    >
+                      <div className="text-sm font-medium">Design a game</div>
+                      <div className="text-xs text-text-dim">AI composes a grid game (walls, tokens, enemies).</div>
+                    </button>
                   </div>
                 </div>
+
+                {mode === 'engine_config' && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Base engine</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {SUPPORTED_ENGINES.map((e) => (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => setEngine(e.id)}
+                          disabled={busy}
+                          className={`text-left p-2 rounded-lg border ${
+                            engine === e.id ? 'bg-primary/20 border-primary' : 'bg-surface-light border-border'
+                          }`}
+                        >
+                          <div className="text-sm font-medium">{e.label}</div>
+                          <div className="text-xs text-text-dim">{e.blurb}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium mb-1">Prompt</label>

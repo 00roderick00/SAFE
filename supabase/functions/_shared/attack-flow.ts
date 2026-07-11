@@ -12,13 +12,14 @@ export interface AttackModuleSeed {
   moduleType: ModuleType;
   difficulty: number;
   seed: string;
-  /** For custom-game slots: the AI-generated engine config. Sent to
-   *  the client so the minigame can render with the same tuned
-   *  parameters the creator built. Absent for built-in modules. */
+  /** For custom-game slots: the AI-generated engine config or DSL
+   *  program (see `mode`). Sent to the client so the minigame can
+   *  render with the same tuned parameters the creator built. */
   config?: unknown;
-  /** For custom-game slots: the underlying engine to render. Absent
-   *  for built-in modules. */
+  /** For custom-game slots: the underlying engine to render. */
   baseEngine?: ModuleType;
+  /** For custom-game slots: which renderer to use. Absent = built-in. */
+  mode?: 'engine_config' | 'dsl_program';
 }
 
 export interface AttackStartPayload {
@@ -49,6 +50,7 @@ export function buildAttackSeeds(
     if (mod.customConfig) {
       seed.config = mod.customConfig.config;
       seed.baseEngine = mod.customConfig.baseEngine;
+      seed.mode = mod.customConfig.mode;
     }
     return seed;
   });

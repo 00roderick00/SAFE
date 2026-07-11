@@ -61,6 +61,7 @@ export interface SecurityModule {
   customConfig?: {
     baseEngine: ModuleType;
     config: unknown;
+    mode?: 'engine_config' | 'dsl_program';
   };
 }
 

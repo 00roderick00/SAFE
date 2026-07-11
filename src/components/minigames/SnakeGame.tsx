@@ -1,33 +1,47 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
-import { MiniGameResult } from '../../types';
-
-interface SnakeGameProps {
-  difficulty: number;
-  onComplete: (result: MiniGameResult) => void;
-}
+import { MiniGameResult, MiniGameProps } from '../../types';
 
 interface Position {
   x: number;
   y: number;
 }
 
-const GRID_SIZE = 12;
 const CELL_SIZE = 22;
 
-export const SnakeGame = ({ difficulty, onComplete }: SnakeGameProps) => {
-  const [snake, setSnake] = useState<Position[]>([{ x: 6, y: 6 }]);
+interface SnakeConfig {
+  boardSize?: number;
+  speed?: number;
+  targetLength?: number;
+  timeLimit?: number;
+}
+
+export const SnakeGame = ({ difficulty, config, onComplete }: MiniGameProps) => {
+  // Custom variants can override any of these via `config`;
+  // otherwise fall back to difficulty-driven defaults.
+  const cfg = (config ?? {}) as SnakeConfig;
+  const gridSize = useMemo(() => Math.max(8, Math.min(20, cfg.boardSize ?? 12)), [cfg.boardSize]);
+  const centre = Math.floor(gridSize / 2);
+  const [snake, setSnake] = useState<Position[]>([{ x: centre, y: centre }]);
   const [food, setFood] = useState<Position>({ x: 3, y: 3 });
   const [direction, setDirection] = useState<'up' | 'down' | 'left' | 'right'>('right');
   const [gameOver, setGameOver] = useState(false);
   const [score, setScore] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(25);
+  const [timeLeft, setTimeLeft] = useState(cfg.timeLimit ?? 25);
   const [gameStarted, setGameStarted] = useState(false);
   const startTime = useRef<number>(0);
   useEffect(() => { startTime.current = Date.now(); }, []);
   const directionRef = useRef(direction);
-  const targetScore = Math.floor(3 + difficulty * 5);
+  const targetScore = cfg.targetLength ?? Math.floor(3 + difficulty * 5);
+  // Speed 1-5 → tick interval 220..80 ms; falls back to difficulty formula.
+  const tickInterval = useMemo(() => {
+    if (typeof cfg.speed === 'number') {
+      const clamped = Math.max(1, Math.min(5, Math.round(cfg.speed)));
+      return 260 - clamped * 36;
+    }
+    return 180 - difficulty * 70;
+  }, [cfg.speed, difficulty]);
 
   useEffect(() => {
     directionRef.current = direction;
@@ -37,8 +51,8 @@ export const SnakeGame = ({ difficulty, onComplete }: SnakeGameProps) => {
     let newFood: Position;
     do {
       newFood = {
-        x: Math.floor(Math.random() * GRID_SIZE),
-        y: Math.floor(Math.random() * GRID_SIZE),
+        x: Math.floor(Math.random() * gridSize),
+        y: Math.floor(Math.random() * gridSize),
       };
     } while (snake.some(s => s.x === newFood.x && s.y === newFood.y));
     setFood(newFood);
@@ -76,7 +90,6 @@ export const SnakeGame = ({ difficulty, onComplete }: SnakeGameProps) => {
   // Game loop
   useEffect(() => {
     if (gameOver || !gameStarted) return;
-    const speed = 180 - difficulty * 70;
     const interval = setInterval(() => {
       setSnake((currentSnake) => {
         const head = { ...currentSnake[0] };
@@ -89,7 +102,7 @@ export const SnakeGame = ({ difficulty, onComplete }: SnakeGameProps) => {
         }
 
         // Wall collision
-        if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
+        if (head.x < 0 || head.x >= gridSize || head.y < 0 || head.y >= gridSize) {
           handleGameEnd();
           return currentSnake;
         }
@@ -112,9 +125,9 @@ export const SnakeGame = ({ difficulty, onComplete }: SnakeGameProps) => {
 
         return newSnake;
       });
-    }, speed);
+    }, tickInterval);
     return () => clearInterval(interval);
-  }, [gameOver, gameStarted, food, difficulty, handleGameEnd, spawnFood]);
+  }, [gameOver, gameStarted, food, tickInterval, handleGameEnd, spawnFood]);
 
   // Keyboard controls
   useEffect(() => {
@@ -170,13 +183,13 @@ export const SnakeGame = ({ difficulty, onComplete }: SnakeGameProps) => {
       <div
         className="relative rounded-lg overflow-hidden border-2 border-border"
         style={{
-          width: GRID_SIZE * CELL_SIZE,
-          height: GRID_SIZE * CELL_SIZE,
+          width: gridSize * CELL_SIZE,
+          height: gridSize * CELL_SIZE,
           background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)'
         }}
       >
         {/* Grid lines */}
-        {[...Array(GRID_SIZE - 1)].map((_, i) => (
+        {[...Array(gridSize - 1)].map((_, i) => (
           <div
             key={`v-${i}`}
             className="absolute bg-border/20"
@@ -184,18 +197,18 @@ export const SnakeGame = ({ difficulty, onComplete }: SnakeGameProps) => {
               left: (i + 1) * CELL_SIZE,
               top: 0,
               width: 1,
-              height: GRID_SIZE * CELL_SIZE
+              height: gridSize * CELL_SIZE
             }}
           />
         ))}
-        {[...Array(GRID_SIZE - 1)].map((_, i) => (
+        {[...Array(gridSize - 1)].map((_, i) => (
           <div
             key={`h-${i}`}
             className="absolute bg-border/20"
             style={{
               left: 0,
               top: (i + 1) * CELL_SIZE,
-              width: GRID_SIZE * CELL_SIZE,
+              width: gridSize * CELL_SIZE,
               height: 1
             }}
           />

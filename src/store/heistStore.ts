@@ -56,7 +56,7 @@ interface HeistStore {
     name: string;
     description: string;
     seed?: string;
-    customConfig?: { baseEngine: string; config: unknown };
+    customConfig?: { baseEngine: string; config: unknown; mode?: 'engine_config' | 'dsl_program' };
   } | null;
   getProgress: () => { current: number; total: number };
 }
@@ -201,7 +201,7 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
         description: '',
         seed: m.seed,
         customConfig: isCustom
-          ? { baseEngine: m.baseEngine!, config: m.config }
+          ? { baseEngine: m.baseEngine!, config: m.config, mode: m.mode }
           : undefined,
       };
     }

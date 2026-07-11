@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { MiniGameResult } from '../../types';
-
-interface MemoryMatchProps {
-  difficulty: number;
-  onComplete: (result: MiniGameResult) => void;
-}
+import { MiniGameProps } from '../../types';
 
 interface Card {
   id: number;
@@ -14,23 +9,33 @@ interface Card {
   isMatched: boolean;
 }
 
+interface MemoryConfig {
+  pairCount?: number;
+  memorizeTime?: number;
+  timeLimit?: number;
+}
+
 const EMOJIS = ['🚀', '🎮', '💎', '🔥', '⚡', '🌟', '🎯', '🎪', '🎨', '🎸', '🎭', '🎬'];
 
-export const MemoryMatch = ({ difficulty, onComplete }: MemoryMatchProps) => {
+export const MemoryMatch = ({ difficulty, config, onComplete }: MiniGameProps) => {
+  const cfg = (config ?? {}) as MemoryConfig;
   const [cards, setCards] = useState<Card[]>([]);
   const [flippedCards, setFlippedCards] = useState<number[]>([]);
   const [matches, setMatches] = useState(0);
   const [totalPairs, setTotalPairs] = useState(0);
   const [moves, setMoves] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(cfg.timeLimit ?? 30);
   const [gameOver, setGameOver] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const startTime = useRef<number>(0);
   useEffect(() => { startTime.current = Date.now(); }, []);
 
-  // Initialize cards
+  // Initialize cards. Custom variants can override pairCount via
+  // `config`; otherwise map from difficulty as before.
   useEffect(() => {
-    const pairCount = difficulty < 0.33 ? 4 : difficulty < 0.66 ? 6 : 8;
+    const requested = typeof cfg.pairCount === 'number' ? cfg.pairCount : undefined;
+    const derived = difficulty < 0.33 ? 4 : difficulty < 0.66 ? 6 : 8;
+    const pairCount = Math.max(2, Math.min(EMOJIS.length, Math.round(requested ?? derived)));
     const selectedEmojis = EMOJIS.slice(0, pairCount);
     const cardPairs = [...selectedEmojis, ...selectedEmojis]
       .sort(() => Math.random() - 0.5)
@@ -42,7 +47,7 @@ export const MemoryMatch = ({ difficulty, onComplete }: MemoryMatchProps) => {
       }));
     setCards(cardPairs);
     setTotalPairs(pairCount);
-  }, [difficulty]);
+  }, [difficulty, cfg.pairCount]);
 
   // Timer
   useEffect(() => {

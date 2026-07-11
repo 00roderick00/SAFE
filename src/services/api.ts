@@ -23,6 +23,7 @@ export interface AttackModuleSeed {
    *  minigame to consume. */
   baseEngine?: ModuleType;
   config?: unknown;
+  mode?: 'engine_config' | 'dsl_program';
 }
 
 export interface AttackStartPayload {
@@ -103,15 +104,17 @@ export interface CustomGame {
   description: string;
   prompt: string;
   base_engine: string;
+  mode: 'engine_config' | 'dsl_program';
   config: Record<string, unknown>;
+  dsl_program: Record<string, unknown> | null;
   stated_difficulty: number;
   calibrated_difficulty: number | null;
   calibration_stats: {
     passes: boolean;
-    solveRate: number;
-    iterations: number;
-    aiSkill: number;
-    band: { min: number; max: number };
+    solveRate?: number;
+    iterations?: number;
+    aiSkill?: number;
+    band?: { min: number; max: number };
     reason?: string;
   } | null;
   status: 'draft' | 'calibrating' | 'live' | 'rejected';
@@ -126,7 +129,8 @@ export interface PublicCustomGame extends CustomGame {
 export interface GenerateGameResponse {
   customGame: CustomGame;
   calibration: CustomGame['calibration_stats'];
-  aiRaw: string;
+  moderation?: { safe: boolean; category: string; reason?: string; source: string };
+  aiRaw?: string;
 }
 
 // ---------------------------------------------------------------
@@ -180,9 +184,14 @@ export const api = {
 
   async generateGame(input: {
     prompt: string;
-    baseEngine: string;
     name: string;
     statedDifficulty?: number;
+    /** Which builder to use. `engine_config` (default) tunes an
+     *  existing engine; `dsl_program` produces a full DSL game
+     *  interpreted at runtime — see MiniGameHost + DslRunner. */
+    mode?: 'engine_config' | 'dsl_program';
+    /** Required when mode = engine_config. */
+    baseEngine?: string;
   }): Promise<GenerateGameResponse> {
     return callFunction<GenerateGameResponse>('generate_game', input);
   },

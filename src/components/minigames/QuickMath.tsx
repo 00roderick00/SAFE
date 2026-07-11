@@ -1,11 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { MiniGameResult } from '../../types';
-
-interface QuickMathProps {
-  difficulty: number;
-  onComplete: (result: MiniGameResult) => void;
-}
+import { MiniGameProps } from '../../types';
 
 interface Problem {
   question: string;
@@ -13,11 +8,37 @@ interface Problem {
   options: number[];
 }
 
-export const QuickMath = ({ difficulty, onComplete }: QuickMathProps) => {
+interface QuickMathConfig {
+  problemCount?: number;
+  operations?: string[];
+  timeLimit?: number;
+  allowNegatives?: boolean;
+}
+
+const OP_MAP: Record<string, '+' | '-' | '*' | '/'> = {
+  add: '+',
+  sub: '-',
+  mul: '*',
+  div: '/',
+};
+
+export const QuickMath = ({ difficulty, config, onComplete }: MiniGameProps) => {
+  const cfg = (config ?? {}) as QuickMathConfig;
+  const targetCount = cfg.problemCount;
+  const allowedOps = useMemo(() => {
+    if (Array.isArray(cfg.operations) && cfg.operations.length > 0) {
+      const mapped = cfg.operations
+        .map((op) => OP_MAP[op])
+        .filter((v): v is '+' | '-' | '*' | '/' => Boolean(v));
+      if (mapped.length > 0) return mapped;
+    }
+    return (difficulty > 0.5 ? ['+', '-', '*'] : ['+', '-']) as ('+' | '-' | '*' | '/')[];
+  }, [cfg.operations, difficulty]);
+
   const [problem, setProblem] = useState<Problem | null>(null);
   const [score, setScore] = useState(0);
   const [totalProblems, setTotalProblems] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(20);
+  const [timeLeft, setTimeLeft] = useState(cfg.timeLimit ?? 20);
   const [gameOver, setGameOver] = useState(false);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
   const startTime = useRef<number>(0);
@@ -25,8 +46,8 @@ export const QuickMath = ({ difficulty, onComplete }: QuickMathProps) => {
 
   const generateProblem = useCallback(() => {
     const maxNum = 5 + Math.floor(difficulty * 15);
-    const operations = difficulty > 0.5 ? ['+', '-', '*'] : ['+', '-'];
-    const op = operations[Math.floor(Math.random() * operations.length)];
+    const op = allowedOps[Math.floor(Math.random() * allowedOps.length)];
+    const allowNeg = cfg.allowNegatives === true;
 
     let a: number, b: number, answer: number;
 
@@ -37,14 +58,28 @@ export const QuickMath = ({ difficulty, onComplete }: QuickMathProps) => {
         answer = a + b;
         break;
       case '-':
-        a = Math.floor(Math.random() * maxNum) + 5;
-        b = Math.floor(Math.random() * Math.min(a, maxNum)) + 1;
+        // With allowNegatives=true, don't constrain a >= b — the
+        // answer may be negative. Otherwise ensure a >= b.
+        if (allowNeg) {
+          a = Math.floor(Math.random() * maxNum) + 1;
+          b = Math.floor(Math.random() * maxNum) + 1;
+        } else {
+          a = Math.floor(Math.random() * maxNum) + 5;
+          b = Math.floor(Math.random() * Math.min(a, maxNum)) + 1;
+        }
         answer = a - b;
         break;
       case '*':
         a = Math.floor(Math.random() * 10) + 1;
         b = Math.floor(Math.random() * 10) + 1;
         answer = a * b;
+        break;
+      case '/':
+        // Force integer division: pick a divisor and multiplier
+        // so the answer stays whole.
+        b = Math.floor(Math.random() * 9) + 2;
+        answer = Math.floor(Math.random() * 10) + 1;
+        a = b * answer;
         break;
       default:
         a = 1;
@@ -119,7 +154,13 @@ export const QuickMath = ({ difficulty, onComplete }: QuickMathProps) => {
 
     setTimeout(() => {
       setFeedback(null);
-      generateProblem();
+      // Custom variants can cap the game at `problemCount` problems;
+      // otherwise it runs until the timer expires.
+      if (typeof targetCount === 'number' && totalProblems + 1 >= targetCount) {
+        handleGameEnd();
+      } else {
+        generateProblem();
+      }
     }, 300);
   };
 
