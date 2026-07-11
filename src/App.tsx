@@ -8,6 +8,7 @@ import { HeistScreen } from './screens/HeistScreen';
 import { AttackScreen } from './screens/AttackScreen';
 import { HistoryScreen } from './screens/HistoryScreen';
 import { CustomGameScreen } from './screens/CustomGameScreen';
+import { MarketplaceScreen } from './screens/MarketplaceScreen';
 import { LeaderboardScreen } from './screens/LeaderboardScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
@@ -41,6 +42,7 @@ function App() {
         <Route path="/attack" element={<AttackScreen />} />
         <Route path="/security/pick/:slotIndex" element={<GamePickerScreen />} />
         <Route path="/custom-games" element={<CustomGameScreen />} />
+        <Route path="/marketplace" element={<MarketplaceScreen />} />
         <Route path="/leaderboard" element={<LeaderboardScreen />} />
         <Route path="/profile" element={<ProfileScreen />} />
 

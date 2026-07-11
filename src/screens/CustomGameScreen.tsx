@@ -1,73 +1,83 @@
-import { useState } from 'react';
+// Custom-game builder screen (Phase 3A).
+//
+// User prompts the server, server calls Anthropic, validates the
+// config against a JSON Schema, runs the calibration gate, and
+// persists a custom_games row. The client never sees the API key
+// and never executes AI-emitted code — this screen just displays
+// the row the server returns and lets the user list/manage their
+// creations.
+
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Trash2, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { useCustomGameStore } from '../store/customGameStore';
-import { CustomGameSuggestion } from '../types';
+import { ArrowLeft, Plus, Sparkles, CheckCircle, XCircle, Loader2, Store } from 'lucide-react';
+import { api, type CustomGame } from '../services/api';
+import { useSession } from '../services/useSession';
+
+const SUPPORTED_ENGINES: { id: string; label: string; blurb: string }[] = [
+  { id: 'maze', label: 'Maze', blurb: 'Traverse a grid maze under a timer' },
+  { id: 'snake', label: 'Snake', blurb: 'Grow to a target length before time runs out' },
+  { id: 'timing', label: 'Timing dial', blurb: 'Stop the needle in the target zone' },
+  { id: 'pattern', label: 'Pattern lock', blurb: 'Memorise then reproduce a pattern' },
+  { id: 'memorymatch', label: 'Memory match', blurb: 'Find matching pairs' },
+  { id: 'quickmath', label: 'Quick math', blurb: 'Solve arithmetic under pressure' },
+];
 
 export const CustomGameScreen = () => {
   const navigate = useNavigate();
-  const { suggestions, addSuggestion, removeSuggestion } = useCustomGameStore();
+  const session = useSession();
 
+  const [games, setGames] = useState<CustomGame[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [mechanics, setMechanics] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [engine, setEngine] = useState<string>('maze');
+  const [statedDifficulty, setStatedDifficulty] = useState(0.5);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await api.listOwnCustomGames(session.user.id);
+        if (!cancelled) setGames(rows);
+      } catch {
+        // ignore — UI shows empty state
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !mechanics.trim()) return;
-
-    addSuggestion(name.trim(), description.trim(), mechanics.trim());
-    setName('');
-    setDescription('');
-    setMechanics('');
-    setShowForm(false);
-  };
-
-  const getStatusIcon = (status: CustomGameSuggestion['status']) => {
-    switch (status) {
-      case 'pending':
-        return <Loader2 size={16} className="animate-spin text-text-dim" />;
-      case 'rated':
-        return <Clock size={16} className="text-warning" />;
-      case 'approved':
-        return <CheckCircle size={16} className="text-primary" />;
-      case 'built':
-        return <CheckCircle size={16} className="text-green-500" />;
-      case 'rejected':
-        return <XCircle size={16} className="text-danger" />;
-      default:
-        return null;
+    setErr(null);
+    if (!name.trim() || !prompt.trim()) return;
+    setBusy(true);
+    try {
+      const res = await api.generateGame({
+        prompt: prompt.trim(),
+        baseEngine: engine,
+        name: name.trim(),
+        statedDifficulty,
+      });
+      setGames((prev) => [res.customGame, ...prev]);
+      setName('');
+      setPrompt('');
+      setShowForm(false);
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : 'Generation failed');
+    } finally {
+      setBusy(false);
     }
-  };
-
-  const getStatusText = (status: CustomGameSuggestion['status']) => {
-    switch (status) {
-      case 'pending':
-        return 'Analyzing...';
-      case 'rated':
-        return 'Under Review';
-      case 'approved':
-        return 'Approved';
-      case 'built':
-        return 'Built & Ready';
-      case 'rejected':
-        return 'Needs More Detail';
-      default:
-        return status;
-    }
-  };
-
-  const getFeasibilityColor = (feasibility: number) => {
-    if (feasibility > 0.7) return 'text-primary';
-    if (feasibility > 0.4) return 'text-warning';
-    return 'text-danger';
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
@@ -79,26 +89,34 @@ export const CustomGameScreen = () => {
             </button>
             <h1 className="ml-2 text-lg font-semibold">Custom Games</h1>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-3 py-2 bg-primary text-background font-medium rounded-xl"
-          >
-            <Plus size={18} />
-            Suggest
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/marketplace')}
+              className="flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-xl text-sm"
+            >
+              <Store size={16} />
+              Browse
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-primary text-background font-medium rounded-xl"
+            >
+              <Plus size={18} />
+              Build
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="px-4 py-6">
-        {/* Info card */}
         <div className="card-clean p-4 mb-6">
           <p className="text-sm text-text-dim">
-            Suggest new security games for your safe! Describe the gameplay mechanics and our AI will
-            analyze if it can be built. Approved games will be added to your security options.
+            Describe a variant of one of our engines and the AI will propose a config.
+            Every game is calibrated before it can guard a safe — solve rate must land
+            in the 30-70% band. AI output is validated as data, never executed.
           </p>
         </div>
 
-        {/* Suggestion form */}
         <AnimatePresence>
           {showForm && (
             <motion.div
@@ -109,58 +127,95 @@ export const CustomGameScreen = () => {
             >
               <form onSubmit={handleSubmit} className="card-clean p-4 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Game Name</label>
+                  <label className="block text-sm font-medium mb-1">Name</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g., Color Match"
-                    className="w-full px-3 py-2 bg-surface-light border border-border rounded-lg text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
-                    maxLength={30}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Short Description</label>
-                  <input
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="e.g., Match colors before time runs out"
+                    placeholder="e.g., Speedrun Maze"
                     className="w-full px-3 py-2 bg-surface-light border border-border rounded-lg text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
                     maxLength={60}
+                    required
+                    disabled={busy}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Gameplay Mechanics</label>
+                  <label className="block text-sm font-medium mb-1">Base engine</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SUPPORTED_ENGINES.map((e) => (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => setEngine(e.id)}
+                        disabled={busy}
+                        className={`text-left p-2 rounded-lg border ${
+                          engine === e.id ? 'bg-primary/20 border-primary' : 'bg-surface-light border-border'
+                        }`}
+                      >
+                        <div className="text-sm font-medium">{e.label}</div>
+                        <div className="text-xs text-text-dim">{e.blurb}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Prompt</label>
                   <textarea
-                    value={mechanics}
-                    onChange={(e) => setMechanics(e.target.value)}
-                    placeholder="Describe how the game works in detail. Include:
-- What the player sees
-- What they need to do to win
-- Time limits or scoring system
-- Any special rules"
-                    className="w-full px-3 py-2 bg-surface-light border border-border rounded-lg text-text placeholder:text-text-dim focus:outline-none focus:border-primary min-h-[120px] resize-none"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="A punishing 12x12 maze with a 20-second timer, neon theme."
+                    className="w-full px-3 py-2 bg-surface-light border border-border rounded-lg text-text placeholder:text-text-dim focus:outline-none focus:border-primary min-h-[100px] resize-none"
+                    maxLength={1000}
                     required
+                    disabled={busy}
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Target difficulty: {(statedDifficulty * 100).toFixed(0)}%
+                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={statedDifficulty}
+                    onChange={(e) => setStatedDifficulty(parseFloat(e.target.value))}
+                    className="w-full"
+                    disabled={busy}
+                  />
+                </div>
+
+                {err && <p className="text-sm text-danger">{err}</p>}
 
                 <div className="flex gap-3">
                   <button
                     type="button"
                     onClick={() => setShowForm(false)}
                     className="flex-1 py-2 bg-surface border border-border rounded-lg hover:bg-surface-light"
+                    disabled={busy}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-2 bg-primary text-background font-medium rounded-lg hover:opacity-90"
+                    className="flex-1 py-2 bg-primary text-background font-medium rounded-lg hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                    disabled={busy}
                   >
-                    Submit
+                    {busy ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Building…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        Build with AI
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -168,80 +223,85 @@ export const CustomGameScreen = () => {
           )}
         </AnimatePresence>
 
-        {/* Suggestions list */}
-        {suggestions.length === 0 ? (
+        {games.length === 0 ? (
           <div className="text-center py-12">
             <span className="text-6xl block mb-4">🎮</span>
-            <p className="text-text-dim">No game suggestions yet.</p>
-            <p className="text-text-dim text-sm mt-1">Tap "Suggest" to create your first custom game!</p>
+            <p className="text-text-dim">Nothing yet.</p>
+            <p className="text-text-dim text-sm mt-1">Tap Build to make your first AI-designed game.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {suggestions.map((suggestion) => (
-              <motion.div
-                key={suggestion.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="card-clean p-4"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                    {getStatusIcon(suggestion.status)}
-                    <span className="text-xs text-text-dim">{getStatusText(suggestion.status)}</span>
-                  </div>
-                  <button
-                    onClick={() => removeSuggestion(suggestion.id)}
-                    className="p-1 text-text-dim hover:text-danger"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-
-                <h3 className="font-semibold mb-1">{suggestion.name}</h3>
-                {suggestion.description && (
-                  <p className="text-sm text-text-dim mb-2">{suggestion.description}</p>
-                )}
-
-                <p className="text-xs text-text-dim mb-3 line-clamp-2">{suggestion.mechanics}</p>
-
-                {/* AI Rating */}
-                {suggestion.aiRating && (
-                  <div className="bg-surface-light rounded-lg p-3 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-text-dim">Feasibility</span>
-                      <span className={getFeasibilityColor(suggestion.aiRating.feasibility)}>
-                        {Math.round(suggestion.aiRating.feasibility * 100)}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-text-dim">Difficulty</span>
-                      <span className={
-                        suggestion.aiRating.difficulty < 0.4 ? 'text-primary' :
-                        suggestion.aiRating.difficulty < 0.7 ? 'text-warning' : 'text-danger'
-                      }>
-                        {suggestion.aiRating.difficulty < 0.4 ? 'Easy' :
-                         suggestion.aiRating.difficulty < 0.7 ? 'Medium' : 'Hard'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-text-dim">Est. Time</span>
-                      <span>{suggestion.aiRating.estimatedTime}</span>
-                    </div>
-                    <p className="text-xs text-text-dim border-t border-border pt-2 mt-2">
-                      {suggestion.aiRating.feedback}
-                    </p>
-                  </div>
-                )}
-
-                {/* Submitted time */}
-                <p className="text-xs text-text-dim mt-3">
-                  Submitted {new Date(suggestion.suggestedAt).toLocaleDateString()}
-                </p>
-              </motion.div>
+            {games.map((g) => (
+              <CustomGameRow key={g.id} game={g} />
             ))}
           </div>
         )}
       </div>
     </div>
+  );
+};
+
+const CustomGameRow = ({ game }: { game: CustomGame }) => {
+  const rate = game.calibration_stats?.solveRate;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="card-clean p-4"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="font-semibold">{game.name}</h3>
+          <p className="text-xs text-text-dim">
+            Base engine: {game.base_engine}
+          </p>
+        </div>
+        <StatusPill status={game.status} />
+      </div>
+      {game.description && (
+        <p className="text-sm text-text-dim mt-2 line-clamp-2">{game.description}</p>
+      )}
+      {game.calibration_stats && (
+        <div className="bg-surface-light rounded-lg p-3 mt-3 text-sm space-y-1">
+          <div className="flex justify-between">
+            <span className="text-text-dim">Solve rate</span>
+            <span>{rate !== undefined ? `${(rate * 100).toFixed(0)}%` : '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-text-dim">Calibrated difficulty</span>
+            <span>
+              {game.calibrated_difficulty !== null
+                ? `${(game.calibrated_difficulty * 100).toFixed(0)}%`
+                : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-text-dim">Plays</span>
+            <span>{game.plays}</span>
+          </div>
+          {game.calibration_stats.reason && (
+            <p className="text-xs text-warning pt-2 border-t border-border">
+              Rejected: {game.calibration_stats.reason}
+            </p>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
+const StatusPill = ({ status }: { status: CustomGame['status'] }) => {
+  const map = {
+    draft: { text: 'Draft', cls: 'bg-surface-light text-text-dim', icon: null as React.ReactNode },
+    calibrating: { text: 'Calibrating', cls: 'bg-surface-light text-warning', icon: <Loader2 size={12} className="animate-spin" /> },
+    live: { text: 'Live', cls: 'bg-primary/20 text-primary', icon: <CheckCircle size={12} /> },
+    rejected: { text: 'Rejected', cls: 'bg-danger/20 text-danger', icon: <XCircle size={12} /> },
+  } as const;
+  const m = map[status];
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${m.cls}`}>
+      {m.icon}
+      {m.text}
+    </span>
   );
 };

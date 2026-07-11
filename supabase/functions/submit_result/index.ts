@@ -26,7 +26,7 @@ import {
   serviceClient,
 } from '../_shared/http.ts';
 import { checkPlausibility, type SubmittedResult } from '../_shared/plausibility.ts';
-import { computeLootSplit } from '../_shared/attack-flow.ts';
+import { computeCreatorRoyalty, computeLootSplit } from '../_shared/attack-flow.ts';
 import type { SecurityLoadout } from '../_shared/types.ts';
 
 interface SubmitBody {
@@ -273,6 +273,83 @@ serve(async (req) => {
     }
   }
 
+  // ------- Creator royalties (Phase 3A) ---------------------------
+  // Any modules in the frozen loadout snapshot that were custom
+  // games — identified by a `customGameId` on the module — earn
+  // their creator a royalty. Paid out of the platform's slice on
+  // wins, and as a fixed defense-bonus on losses. See
+  // computeCreatorRoyalty for the split.
+  const customGameIds = Array.from(
+    new Set(
+      loadout.modules
+        .map((m: { customGameId?: string }) => m.customGameId)
+        .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    )
+  );
+  let royaltyPaidPerCreator = 0;
+  let royaltyPaidTotal = 0;
+  if (customGameIds.length > 0) {
+    const { data: games } = await supabase
+      .from('custom_games')
+      .select('id, creator_id, status')
+      .in('id', customGameIds);
+    // Only pay royalties for games that were live at attack time.
+    const distinctCreators = Array.from(
+      new Set(
+        (games ?? [])
+          .filter((g: { status: string }) => g.status === 'live')
+          .map((g: { creator_id: string }) => g.creator_id)
+      )
+    );
+    if (distinctCreators.length > 0) {
+      const royalty = computeCreatorRoyalty({
+        outcome: status,
+        stake: attack.stake,
+        platformReceivesOnWin: platformReceives,
+        distinctCreators: distinctCreators.length,
+      });
+      royaltyPaidPerCreator = royalty.perCreator;
+      royaltyPaidTotal = royalty.totalRoyalty;
+
+      if (royalty.perCreator > 0) {
+        for (const creatorId of distinctCreators) {
+          if (creatorId === userId) continue; // don't pay attacker royalty on their own custom game
+          await supabase.rpc('insert_ledger', {
+            p_user_id: creatorId,
+            p_delta: royalty.perCreator,
+            p_reason: 'creator_royalty',
+            p_ref_type: 'attack',
+            p_ref_id: attack.id,
+          });
+        }
+        // Platform books: subtract the total royalty pool. Keeps
+        // the ledger balanced: on wins we already recorded a
+        // positive platform_cut for platformReceives; we now
+        // record a matching negative for the royalty pool. On
+        // losses (bot target) the platform recorded +stake; on a
+        // real-target loss the defender got the stake, so the
+        // royalty comes from platform anyway.
+        await supabase.rpc('insert_ledger', {
+          p_user_id: null,
+          p_delta: -royalty.totalRoyalty,
+          p_reason: 'creator_royalty',
+          p_ref_type: 'attack',
+          p_ref_id: attack.id,
+        });
+      }
+      // Bump plays counter on each involved game.
+      for (const g of games ?? []) {
+        if ((g as { status: string }).status === 'live') {
+          await supabase
+            .from('custom_games')
+            // deno-lint-ignore no-explicit-any
+            .update({ plays: ((g as any).plays ?? 0) + 1, updated_at: new Date().toISOString() })
+            .eq('id', (g as { id: string }).id);
+        }
+      }
+    }
+  }
+
   // Resolve.
   await supabase
     .from('attacks')
@@ -297,6 +374,11 @@ serve(async (req) => {
       score: r.score,
       passed: r.passed,
     })),
+    creatorRoyalty: {
+      perCreator: royaltyPaidPerCreator,
+      total: royaltyPaidTotal,
+      customGameIds,
+    },
     idempotent: false,
   });
 });

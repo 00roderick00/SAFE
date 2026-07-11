@@ -54,6 +54,14 @@ export interface SecurityModule {
   weight: number; // relative importance
   name: string;
   description: string;
+  /** Present when this slot is a user-built AI-configured minigame.
+   *  See supabase/functions/_shared/types.ts for the canonical
+   *  definition; kept in sync manually. */
+  customGameId?: string;
+  customConfig?: {
+    baseEngine: ModuleType;
+    config: unknown;
+  };
 }
 
 export interface SecurityLoadout {
@@ -172,13 +180,21 @@ export interface TimingLockConfig {
 export type MiniGameConfig = PatternLockConfig | KeypadConfig | TimingLockConfig;
 
 /**
- * Unified minigame contract. Every minigame component accepts these props
- * and reports the result via onComplete. `seed` is reserved for deterministic
- * runs (server-side replay in Phase 2); today's games may ignore it.
+ * Unified minigame contract. Every minigame component accepts these
+ * props and reports the result via onComplete.
+ *
+ * - `seed`: server-issued RNG seed (Phase 2). Today's engines may
+ *   ignore it; deterministic replay uses it in the future.
+ * - `config`: optional AI-generated tunable config (Phase 3A). When
+ *   present, the engine consumes fields it recognises (grid size,
+ *   speed, timers, etc.) and falls back to difficulty-driven
+ *   defaults for anything missing. AI output is DATA — the engine
+ *   never executes any of it as code.
  */
 export interface MiniGameProps {
   difficulty: number;
   seed: string;
+  config?: unknown;
   onComplete: (result: MiniGameResult) => void;
 }
 
@@ -188,23 +204,6 @@ export interface MiniGameResult {
   score: number; // 0-1
   passed: boolean;
   timeSpent: number; // ms
-}
-
-// Custom game suggestion from user
-export interface CustomGameSuggestion {
-  id: string;
-  name: string;
-  description: string;
-  mechanics: string; // user description of how it works
-  suggestedAt: number;
-  aiRating: {
-    difficulty: number; // 0-1
-    feasibility: number; // 0-1 how likely AI can build it
-    estimatedTime: string; // e.g., "15 seconds"
-    feedback: string; // AI's analysis
-  } | null;
-  status: 'pending' | 'rated' | 'approved' | 'built' | 'rejected';
-  builtGameCode?: string; // generated code if built
 }
 
 // Insurance plan options

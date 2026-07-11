@@ -19,6 +19,10 @@ export interface AttackModuleSeed {
   moduleType: ModuleType;
   difficulty: number;
   seed: string;
+  /** For custom-game slots: base engine + validated config for the
+   *  minigame to consume. */
+  baseEngine?: ModuleType;
+  config?: unknown;
 }
 
 export interface AttackStartPayload {
@@ -92,6 +96,39 @@ export interface Profile {
   migrated_from_local: boolean;
 }
 
+export interface CustomGame {
+  id: string;
+  creator_id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  base_engine: string;
+  config: Record<string, unknown>;
+  stated_difficulty: number;
+  calibrated_difficulty: number | null;
+  calibration_stats: {
+    passes: boolean;
+    solveRate: number;
+    iterations: number;
+    aiSkill: number;
+    band: { min: number; max: number };
+    reason?: string;
+  } | null;
+  status: 'draft' | 'calibrating' | 'live' | 'rejected';
+  plays: number;
+  created_at: string;
+}
+
+export interface PublicCustomGame extends CustomGame {
+  creator_handle: string | null;
+}
+
+export interface GenerateGameResponse {
+  customGame: CustomGame;
+  calibration: CustomGame['calibration_stats'];
+  aiRaw: string;
+}
+
 // ---------------------------------------------------------------
 // Function invocations. supabase.functions.invoke wraps the JWT and
 // URL for us — no manual fetch/Authorization header needed.
@@ -137,6 +174,37 @@ export const api = {
   async fetchTargetList(count = 15): Promise<TargetCard[]> {
     const res = await callFunction<{ targets: TargetCard[] }>('list_targets', { count });
     return res.targets ?? [];
+  },
+
+  // ------- Phase 3A: custom games ---------------------------------
+
+  async generateGame(input: {
+    prompt: string;
+    baseEngine: string;
+    name: string;
+    statedDifficulty?: number;
+  }): Promise<GenerateGameResponse> {
+    return callFunction<GenerateGameResponse>('generate_game', input);
+  },
+
+  async listOwnCustomGames(userId: string): Promise<CustomGame[]> {
+    const { data, error } = await supabase
+      .from('custom_games')
+      .select('*')
+      .eq('creator_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as CustomGame[];
+  },
+
+  async listMarketplaceGames(limit = 30): Promise<PublicCustomGame[]> {
+    const { data, error } = await supabase
+      .from('public_custom_games')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return (data ?? []) as PublicCustomGame[];
   },
 
   // ------- CRUD over user data -------

@@ -12,6 +12,13 @@ export interface AttackModuleSeed {
   moduleType: ModuleType;
   difficulty: number;
   seed: string;
+  /** For custom-game slots: the AI-generated engine config. Sent to
+   *  the client so the minigame can render with the same tuned
+   *  parameters the creator built. Absent for built-in modules. */
+  config?: unknown;
+  /** For custom-game slots: the underlying engine to render. Absent
+   *  for built-in modules. */
+  baseEngine?: ModuleType;
 }
 
 export interface AttackStartPayload {
@@ -32,12 +39,19 @@ export function buildAttackSeeds(
   attackId: string,
   loadout: SecurityLoadout
 ): AttackModuleSeed[] {
-  return loadout.modules.map((mod, index) => ({
-    index,
-    moduleType: mod.type,
-    difficulty: mod.difficulty,
-    seed: newSeed(`${attackId}-${index}-${mod.type}`),
-  }));
+  return loadout.modules.map((mod, index) => {
+    const seed: AttackModuleSeed = {
+      index,
+      moduleType: mod.type,
+      difficulty: mod.difficulty,
+      seed: newSeed(`${attackId}-${index}-${mod.type}`),
+    };
+    if (mod.customConfig) {
+      seed.config = mod.customConfig.config;
+      seed.baseEngine = mod.customConfig.baseEngine;
+    }
+    return seed;
+  });
 }
 
 /**
@@ -71,6 +85,43 @@ export function computeLootSplit(defenderBalance: number): {
     platformReceives,
     defenderLoses: potentialLoot,
   };
+}
+
+/**
+ * Creator-royalty math for custom-game modules in a defender's
+ * loadout. On both win and loss the creators earn a small cut,
+ * paid from the platform side so attacker/defender economics stay
+ * intact:
+ *
+ *   Win  → 20% of platformReceives, split equally among custom
+ *          modules in the loadout. Platform keeps the remainder.
+ *   Loss → floor(stake * 0.02) per custom module (defense bonus),
+ *          drawn from platform revenue (bot targets) or from the
+ *          defender's fee (real targets). We MODEL it as coming
+ *          from the platform so the defender's fee stays whole;
+ *          against a bot the platform absorbs it too. That keeps
+ *          the per-user ledger easier to reason about.
+ *
+ * `distinctCreators` is the caller-controlled distinct-creator
+ * count. Passing 0 disables royalties (no custom modules).
+ */
+export function computeCreatorRoyalty(input: {
+  outcome: 'won' | 'lost';
+  stake: number;
+  platformReceivesOnWin: number;
+  distinctCreators: number;
+}): { perCreator: number; totalRoyalty: number } {
+  if (input.distinctCreators <= 0) {
+    return { perCreator: 0, totalRoyalty: 0 };
+  }
+  if (input.outcome === 'won') {
+    const pool = Math.round(input.platformReceivesOnWin * 0.2);
+    const per = Math.floor(pool / input.distinctCreators);
+    return { perCreator: per, totalRoyalty: per * input.distinctCreators };
+  }
+  // Loss / abandon: fixed 2% of stake per creator.
+  const per = Math.floor(input.stake * 0.02);
+  return { perCreator: per, totalRoyalty: per * input.distinctCreators };
 }
 
 /**

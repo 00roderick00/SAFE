@@ -53,6 +53,15 @@ export interface SecurityModule {
   weight: number;
   name: string;
   description: string;
+  /** Present when this slot is a user-built AI-configured minigame. */
+  customGameId?: string;
+  /** Snapshot of the engine + config; also fetched from custom_games
+   *  at attack time. Cached here so the AttackScreen can render
+   *  without an extra round-trip. */
+  customConfig?: {
+    baseEngine: ModuleType;
+    config: unknown;
+  };
 }
 
 export interface SecurityLoadout {

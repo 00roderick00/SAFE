@@ -56,6 +56,7 @@ interface HeistStore {
     name: string;
     description: string;
     seed?: string;
+    customConfig?: { baseEngine: string; config: unknown };
   } | null;
   getProgress: () => { current: number; total: number };
 }
@@ -187,14 +188,21 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
     if (state.serverAttack) {
       const m = state.serverAttack.modules[state.currentModuleIndex];
       if (!m) return null;
+      // Custom modules ship { baseEngine, config } in the seed row;
+      // the attack screen renders `baseEngine` as the engine type and
+      // hands `config` to the minigame host.
+      const isCustom = Boolean(m.baseEngine);
       return {
         id: `${state.serverAttack.attackId}-${m.index}`,
-        type: m.moduleType,
+        type: (isCustom ? m.baseEngine! : m.moduleType),
         difficulty: m.difficulty,
         weight: 1,
         name: m.moduleType,
         description: '',
         seed: m.seed,
+        customConfig: isCustom
+          ? { baseEngine: m.baseEngine!, config: m.config }
+          : undefined,
       };
     }
     if (!state.currentTarget) return null;

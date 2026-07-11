@@ -9,6 +9,10 @@ interface Props {
   moduleId: string;
   difficulty: number;
   seed: string;
+  /** AI-generated engine config for custom-game modules; passed
+   *  through to the engine which reads any fields it supports and
+   *  ignores the rest. */
+  config?: unknown;
   onComplete: (result: MiniGameResult) => void;
   onFail: (result: MiniGameResult) => void;
 }
@@ -25,6 +29,7 @@ export const MiniGameHost = ({
   moduleId,
   difficulty,
   seed,
+  config,
   onComplete,
   onFail,
 }: Props) => {
@@ -63,7 +68,7 @@ export const MiniGameHost = ({
   // dispatch trips its "component created during render" heuristic.
   return (
     <MiniGameErrorBoundary moduleType={moduleType} moduleId={moduleId} onFail={onFail}>
-      {createElement(Component, { difficulty, seed, onComplete })}
+      {createElement(Component, { difficulty, seed, config, onComplete })}
     </MiniGameErrorBoundary>
   );
 };
