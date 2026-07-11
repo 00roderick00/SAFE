@@ -134,6 +134,44 @@ supabase functions deploy submit_result
 4. **Existing dangling attack**: next time you sign in, watch the console for `[hydrate] pending-attack cleanup` — no errors means it was resolved as lost silently.
 5. **Idempotency**: in devtools, double-click Continue on a completed heist, or replay the `submit_result` POST once. Balance does not double-credit.
 
+## Hotfix — target-selection mismatch (2026-07-11, second pass)
+
+Live-game bug: the target shown in the "Confirm Attack" dialog was not the target actually attacked. Selecting `OptimalSafe3` for $35 stake launched a heist against `ShadowBot915` for $14.
+
+Root cause: the target list was generated client-side (`matchmaking.generateBotFeed`), but `start_attack` independently rolled its own bot when the client passed `botDifficulty`. The client's selected target was ignored end-to-end — only the numeric difficulty made it to the server.
+
+Chose **option (b)** — server is the source of truth for the whole target list.
+
+- **New Edge Function `list_targets`** returns the full heist target list in one call: real safes from `public_safe_snapshots` (excluding self and cooldown) plus deterministically-seeded bots to fill the requested count. Each entry has an opaque `id` the client must round-trip verbatim to `start_attack`. Every derived field (`attackFee`, `difficultyBand`, `lootRange`, `securityScore`) is computed server-side using the shared economy module, so the stake shown in the confirm dialog equals the stake `start_attack` will actually debit.
+- **New `_shared/bot-target.ts`** — a pure module that maps a seed to a full bot spec (`{handle, balance, difficulty, loadout, ...}`). `parseBotId` recovers the seed from an id of the form `bot_<seed>`. Both `list_targets` and `start_attack` call `generateBotTarget(seed)` for byte-identical output — no bot table needed, no client-tamper surface.
+- **`start_attack`** now recognises three id shapes and dispatches deterministically:
+  1. `bot_<seed>` — regenerate the same bot the client saw via `generateBotTarget(seed)`. This is the primary flow.
+  2. UUID — real safe from `public_safe_snapshots` (unchanged).
+  3. No id — legacy path, mints a fresh bot on the server. Still uses `generateBotTarget` internally so `bot_target` jsonb always includes `{id, seed, handle, balance, difficulty}` reliably (previously it was `{seed, difficulty, handle}` only, so `submit_result` fell back to a hardcoded 1500 balance for loot calc).
+- **Client**: `api.fetchTargetList` calls `list_targets`; `gameStore.refreshTargetsFromServer` no longer mixes in local `matchmaking.generateBotFeed` bots for signed-in users (kept as fallback when the server call fails or when signed out). `HeistScreen.handleConfirmAttack` always passes `defenderSafeId: selectedTarget.id` — no more `botDifficulty` branch, so a chosen target is stable from list → confirm → start_attack → attack screen.
+- **Test** (`supabase/functions/attack.roundtrip.test.ts`): a new "bot target id round-trip" section asserts (a) the bot object `list_targets` builds is byte-identical to the bot `start_attack` re-derives from the same id, and (b) the stake shown in the confirm dialog equals the stake `start_attack` actually charges. `_shared/bot-target.test.ts` adds 12 unit tests for `parseBotId`, `newBotId`, and `generateBotTarget` (determinism, uniqueness, band assignments, fee-cap under attacker balance).
+
+### Redeploy (this hotfix)
+
+Committing does not deploy. From the repo root:
+
+```sh
+supabase functions deploy list_targets
+supabase functions deploy start_attack
+```
+
+`submit_result` and `resolve_defense` are unchanged. **No SQL migration.**
+
+### Manual verification for the hotfix
+
+1. Reload the app (signed in). Open the Heist screen — the target list is now coming from the server.
+2. In devtools → Network, filter for `list_targets`. Every card shown has an `id` from the response body.
+3. Pick a bot target (name shown as e.g. `ShadowKeeperabc` — the trailing 3 chars are seed-derived). Note the stake in the confirm dialog.
+4. Click Attack. In the Network tab watch `start_attack` fire; the request body contains `defenderSafeId: "bot_..."` matching the id from step 3.
+5. On the AttackScreen the header reads the same name; on completion, the stake debit equals the confirm-dialog stake.
+6. Pick a real safe (a UUID-shaped id). Verify the same round-trip: name and stake shown = name and stake actually charged.
+7. Refresh the target list a couple of times — each refresh generates fresh bot ids (they change every call by design; there is no persistent bot table).
+
 ## Known trade-offs & TODOs
 
 - **Insurance purchase is two calls, not one.** `api.purchaseInsurance` inserts the policy and then debits via `insert_ledger`. If the second call fails you end up with a paid-for policy and no debit — the opposite (no policy, debit) is not possible because of the order. TODO: extract to a `buy_insurance` Edge Function so both writes go through a single stored procedure.

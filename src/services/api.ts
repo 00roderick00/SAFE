@@ -66,6 +66,25 @@ export interface SafeSnapshot {
   last_attacked_at: string | null;
 }
 
+/**
+ * Row returned by the `list_targets` Edge Function. Real safes and
+ * seeded bots share this shape; the client should treat the id as
+ * an opaque token and always pass it back verbatim to start_attack.
+ */
+export interface TargetCard {
+  id: string;
+  handle: string;
+  balance: number;
+  securityScore: number;
+  securityLoadout: SecurityLoadout;
+  difficultyBand: 'soft' | 'tricky' | 'brutal';
+  lootRange: 'small' | 'moderate' | 'rich';
+  attackFee: number;
+  isBot: boolean;
+  tagline: string | null;
+  lastAttackedAt: string | null;
+}
+
 export interface Profile {
   id: string;
   handle: string | null;
@@ -107,6 +126,17 @@ export const api = {
 
   async resolveDefense(): Promise<DefenseTickPayload> {
     return callFunction<DefenseTickPayload>('resolve_defense', {});
+  },
+
+  /**
+   * Server-authoritative target list. Every entry — real safe or
+   * seeded bot — carries an `id` the client must round-trip
+   * verbatim to `startAttack` so the target actually attacked
+   * matches the one displayed.
+   */
+  async fetchTargetList(count = 15): Promise<TargetCard[]> {
+    const res = await callFunction<{ targets: TargetCard[] }>('list_targets', { count });
+    return res.targets ?? [];
   },
 
   // ------- CRUD over user data -------

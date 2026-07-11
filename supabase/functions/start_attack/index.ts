@@ -1,8 +1,17 @@
 // POST /functions/v1/start_attack
 //
 // Body: { defenderSafeId?: string, botDifficulty?: number }
-//   - defenderSafeId targets a real safe snapshot.
-//   - botDifficulty (0..1) requests a generated bot target instead.
+//
+//   defenderSafeId is either:
+//     * a UUID from public_safe_snapshots (a real player's safe), or
+//     * a `bot_<seed>` id issued by list_targets. The server
+//       reconstructs the exact same bot spec from the seed —
+//       guaranteed byte-identical to what the client saw when it
+//       selected the target.
+//
+//   botDifficulty is the legacy path (no target list). Only used when
+//   no defenderSafeId is provided; the server mints a random bot on
+//   the spot.
 //
 // Response: AttackStartPayload — attackId + module seeds. The client
 // plays through the games and posts to /submit_result.
@@ -20,12 +29,12 @@ import {
   buildAttackSeeds,
   computeStake,
   computeLootSplit,
-  generateBotLoadout,
   type AttackStartPayload,
 } from '../_shared/attack-flow.ts';
 import { calculateSecurityScore } from '../_shared/economy.ts';
 import { ECONOMY } from '../_shared/constants.ts';
 import { newSeed } from '../_shared/rng.ts';
+import { generateBotTarget, parseBotId } from '../_shared/bot-target.ts';
 import type { SecurityLoadout } from '../_shared/types.ts';
 
 serve(async (req) => {
@@ -62,7 +71,8 @@ serve(async (req) => {
     .eq('status', 'pending');
   if ((pendingCount ?? 0) > 0) return errorResponse('attack_already_in_progress', 409);
 
-  // Resolve target: real safe or bot.
+  // Resolve target: real safe, bot id from list_targets, or legacy
+  // botDifficulty (mint a fresh bot).
   let defenderSafeId: string | null = null;
   let isBotTarget = false;
   let botTarget: Record<string, unknown> | null = null;
@@ -70,16 +80,34 @@ serve(async (req) => {
   let defenderBalance = 0;
   let defenderLoadout: SecurityLoadout;
 
-  if (body.defenderSafeId) {
+  const requestedId = body.defenderSafeId;
+  const botSeedFromId = requestedId ? parseBotId(requestedId) : null;
+
+  if (botSeedFromId) {
+    // Bot target with a stable id issued by list_targets. Regenerate
+    // the exact same bot the client displayed.
+    const bot = generateBotTarget(botSeedFromId, attackerSafe.balance);
+    isBotTarget = true;
+    defenderLoadout = bot.loadout;
+    defenderBalance = bot.balance;
+    defenderHandle = bot.handle;
+    botTarget = {
+      id: bot.id,
+      seed: bot.seed,
+      handle: bot.handle,
+      balance: bot.balance,
+      difficulty: bot.difficulty,
+    };
+  } else if (requestedId) {
+    // Real safe. UUID lookup.
     const { data: target, error: targetErr } = await supabase
       .from('public_safe_snapshots')
       .select('id, owner_id, balance, security_loadout, handle, last_attacked_at')
-      .eq('id', body.defenderSafeId)
+      .eq('id', requestedId)
       .maybeSingle();
     if (targetErr || !target) return errorResponse('target_not_found', 404);
     if (target.owner_id === userId) return errorResponse('cannot_attack_self', 400);
 
-    // Per-target cooldown check.
     if (target.last_attacked_at) {
       const last = new Date(target.last_attacked_at as string).getTime();
       const now = Date.now();
@@ -95,15 +123,23 @@ serve(async (req) => {
     defenderLoadout = target.security_loadout as SecurityLoadout;
     defenderHandle = (target.handle as string) ?? 'Player';
   } else {
+    // Legacy path (no target selected): mint a fresh bot. Kept for
+    // API back-compat and tooling that hasn't switched to
+    // list_targets. The client's normal flow always goes through
+    // list_targets now.
     isBotTarget = true;
-    const difficulty = typeof body.botDifficulty === 'number'
-      ? Math.max(0.1, Math.min(0.95, body.botDifficulty))
-      : 0.4 + Math.random() * 0.3;
-    const botSeed = newSeed('bot');
-    defenderLoadout = generateBotLoadout(botSeed, difficulty);
-    defenderBalance = Math.round(500 + Math.random() * 3500);
-    defenderHandle = `ShadowBot${Math.floor(Math.random() * 1000)}`;
-    botTarget = { seed: botSeed, difficulty, handle: defenderHandle };
+    const botSeed = newSeed('t');
+    const bot = generateBotTarget(botSeed, attackerSafe.balance);
+    defenderLoadout = bot.loadout;
+    defenderBalance = bot.balance;
+    defenderHandle = bot.handle;
+    botTarget = {
+      id: bot.id,
+      seed: bot.seed,
+      handle: bot.handle,
+      balance: bot.balance,
+      difficulty: bot.difficulty,
+    };
   }
 
   // Compute stake using shared economy.
@@ -116,10 +152,6 @@ serve(async (req) => {
   const moduleSeeds = buildAttackSeeds(attackId, defenderLoadout);
   const { potentialLoot } = computeLootSplit(defenderBalance);
 
-  // Insert attack + debit stake in a single call to the RPC helper
-  // (both live in the same DB tx via a stored procedure — but we can
-  // also just chain here since we're using service_role and Postgres
-  // wraps each statement).
   const { error: insertErr } = await supabase.from('attacks').insert({
     id: attackId,
     attacker_id: userId,
@@ -141,7 +173,6 @@ serve(async (req) => {
     p_ref_id: attackId,
   });
   if (ledgerErr) {
-    // Roll the attack back if we can't debit.
     await supabase.from('attacks').delete().eq('id', attackId);
     return errorResponse('stake_debit_failed', 500, { detail: ledgerErr.message });
   }

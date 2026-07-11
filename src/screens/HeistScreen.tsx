@@ -116,23 +116,17 @@ export const HeistScreen = () => {
     haptics.heavy();
 
     if (session) {
-      // Server owns the flow. Bot rows in the target list are those
-      // whose ids are NOT UUIDs; treat them as bot targets. Real
-      // safes have UUID ids (returned by public_safe_snapshots).
-      const isRealSafe = /^[0-9a-f]{8}-/i.test(selectedTarget.id);
+      // Every target — real safe (UUID) or seeded bot (bot_…) — was
+      // issued by the server via list_targets, and its id is the
+      // token start_attack uses to reconstruct the exact same
+      // spec. So we always pass defenderSafeId; the server picks
+      // the right code path based on the id shape.
       try {
-        await startServerAttack(
-          isRealSafe
-            ? { defenderSafeId: selectedTarget.id }
-            : { botDifficulty: selectedTarget.securityScore / 100 }
-        );
+        await startServerAttack({ defenderSafeId: selectedTarget.id });
         recordBotAttacked(selectedTarget.id);
         setSelectedTarget(null);
         navigate('/attack');
       } catch (err) {
-        // Server refused (cooldown, insufficient balance, etc.).
-        // Surface the reason to the user; leave the modal open so
-        // they can pick a different target.
         // eslint-disable-next-line no-alert
         alert(err instanceof Error ? err.message : 'Attack failed');
       }

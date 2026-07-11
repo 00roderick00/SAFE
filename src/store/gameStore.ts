@@ -5,7 +5,7 @@ import { persist } from 'zustand/middleware';
 import { BotSafe, AttackResult, DefenseEvent, GameNotification, InsurancePolicy, SecurityLoadout } from '../types';
 import { generateBotFeed, generatePracticeSafe } from '../game/matchmaking';
 import { ECONOMY } from '../game/constants';
-import { calculateAttackFee, calculateSecurityScore, getDifficultyBand, getLootRange, processInsuranceClaim } from '../game/economy';
+import { calculateAttackFee, processInsuranceClaim } from '../game/economy';
 import { api } from '../services/api';
 
 interface GameStore {
@@ -63,32 +63,26 @@ export const useGameStore = create<GameStore>()(
         });
       },
 
-      refreshTargetsFromServer: async (userId, playerRating, count = 15) => {
+      refreshTargetsFromServer: async (_userId, playerRating, count = 15) => {
         try {
-          const real = await api.listTargets(userId, count);
-          const realAsBotSafes: BotSafe[] = real.map((snap) => {
-            const score = calculateSecurityScore(snap.security_loadout);
-            const fee = calculateAttackFee(snap.balance, score);
-            return {
-              id: snap.id,
-              ownerName: snap.handle ?? 'Player',
-              safeBalance: snap.balance,
-              securityScore: score,
-              securityLoadout: snap.security_loadout,
-              difficultyBand: getDifficultyBand(score),
-              lootRange: getLootRange(snap.balance),
-              attackFee: fee,
-              lastAttackedAt: snap.last_attacked_at ? new Date(snap.last_attacked_at).getTime() : null,
-              attackCooldownUntil: null,
-              tagline: 'Live target',
-            };
-          });
-          const remaining = Math.max(0, count - realAsBotSafes.length);
-          const bots = remaining > 0 ? generateBotFeed(playerRating, remaining) : [];
-          set({
-            botSafes: [...realAsBotSafes, ...bots],
-            lastBotRefresh: Date.now(),
-          });
+          // Server owns the whole target list — real safes + seeded
+          // bots — so the id on each card round-trips 1:1 into
+          // start_attack. See supabase/functions/list_targets/.
+          const targets = await api.fetchTargetList(count);
+          const botSafes: BotSafe[] = targets.map((t) => ({
+            id: t.id,
+            ownerName: t.handle,
+            safeBalance: t.balance,
+            securityScore: t.securityScore,
+            securityLoadout: t.securityLoadout,
+            difficultyBand: t.difficultyBand,
+            lootRange: t.lootRange,
+            attackFee: t.attackFee,
+            lastAttackedAt: t.lastAttackedAt ? new Date(t.lastAttackedAt).getTime() : null,
+            attackCooldownUntil: null,
+            tagline: t.tagline ?? (t.isBot ? undefined : 'Live target'),
+          }));
+          set({ botSafes, lastBotRefresh: Date.now() });
         } catch (err) {
           // Fall back to local bots when the server is unreachable.
           // eslint-disable-next-line no-console

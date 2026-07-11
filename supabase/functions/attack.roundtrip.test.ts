@@ -28,6 +28,7 @@ import {
 import { checkPlausibility, type SubmittedResult } from './_shared/plausibility';
 import { calculateSecurityScore } from './_shared/economy';
 import { ECONOMY } from './_shared/constants';
+import { generateBotTarget, newBotId, parseBotId } from './_shared/bot-target';
 import type { SecurityLoadout } from './_shared/types';
 
 // --- in-memory mock ---------------------------------------------
@@ -356,5 +357,76 @@ describe('start_attack → submit_result round-trip', () => {
     db.balances.set(attacker, 100);
     const { stake } = simulateStartAttack(db, 'S', attacker, defender, 10000, defenderLoadout);
     expect(stake).toBeLessThanOrEqual(100 * ECONOMY.feeMaxPercentOfBalance);
+  });
+});
+
+/**
+ * The bug this section guards against: the target the user selects
+ * in the confirm dialog must be byte-identical to the target that
+ * start_attack ends up attacking. Before the fix, `start_attack`
+ * generated its own bot when the client passed `botDifficulty`, so
+ * the confirm dialog would show one target and the heist would
+ * launch against a different one.
+ *
+ * The invariant we assert here: every field of the bot displayed by
+ * list_targets equals the corresponding field of the bot re-derived
+ * by start_attack for the same id. That's exactly what the
+ * production code does via `parseBotId` + `generateBotTarget`.
+ */
+describe('bot target id round-trip: list_targets → start_attack', () => {
+  it('same id → identical handle, balance, loadout, stake', () => {
+    const attackerBalance = 1000;
+
+    // list_targets side.
+    const listedId = newBotId();
+    const listed = generateBotTarget(parseBotId(listedId)!, attackerBalance);
+
+    // start_attack side (fresh regen from the id the client returns).
+    const parsedSeed = parseBotId(listedId);
+    expect(parsedSeed).not.toBeNull();
+    const reBuilt = generateBotTarget(parsedSeed!, attackerBalance);
+
+    expect(reBuilt.id).toBe(listed.id);
+    expect(reBuilt.handle).toBe(listed.handle);
+    expect(reBuilt.balance).toBe(listed.balance);
+    expect(reBuilt.difficulty).toBe(listed.difficulty);
+    expect(reBuilt.loadout).toEqual(listed.loadout);
+    expect(reBuilt.securityScore).toBe(listed.securityScore);
+    // The stake shown in the confirm dialog MUST match what
+    // start_attack will actually debit.
+    expect(reBuilt.attackFee).toBe(listed.attackFee);
+  });
+
+  it('is stable across many different seeds', () => {
+    for (let i = 0; i < 10; i++) {
+      const id = newBotId();
+      const seed = parseBotId(id)!;
+      const a = generateBotTarget(seed, 5000);
+      const b = generateBotTarget(seed, 5000);
+      expect(a).toEqual(b);
+    }
+  });
+
+  it('reflects the same stake in confirm-dialog vs. actual start_attack', () => {
+    // Simulate the whole flow: build a listed target, hand its id
+    // back to start_attack, verify the stake charged equals the
+    // stake shown.
+    const db = new MockDb();
+    db.seed('u', 1200);
+
+    const id = newBotId();
+    const displayed = generateBotTarget(parseBotId(id)!, db.balance('u'));
+
+    // Client passes id to start_attack; server calls this function
+    // (same one used by list_targets):
+    const attackedAgainst = generateBotTarget(parseBotId(id)!, db.balance('u'));
+
+    // Compute the stake exactly as start_attack does.
+    const stake = computeStake(
+      attackedAgainst.balance,
+      attackedAgainst.securityScore,
+      db.balance('u')
+    );
+    expect(stake).toBe(displayed.attackFee);
   });
 });
