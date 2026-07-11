@@ -21,7 +21,10 @@ alter table custom_games
 -- gameplay from dsl_program.
 
 -- Rebuild the public marketplace view to expose the mode + DSL.
-create or replace view public_custom_games as
+-- Postgres' `create or replace view` refuses to change column
+-- names/order, so drop + recreate.
+drop view if exists public_custom_games;
+create view public_custom_games as
   select
     cg.id,
     cg.creator_id,
