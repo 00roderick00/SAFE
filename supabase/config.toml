@@ -1,0 +1,47 @@
+# Supabase project configuration (Infrastructure-as-Code).
+#
+# IMPORTANT: `supabase config push` applies THIS ENTIRE FILE to the
+# linked hosted project, overwriting dashboard values for the keys it
+# sets. Review before pushing. If you'd rather not manage everything as
+# code, configure auth email via the dashboard instead — see
+# docs/AUTH_EMAIL_SETUP.md. This file focuses on the auth-email fix from
+# TESTING-FINDINGS P1.2 (the built-in provider is rate-limited to a few
+# sends/hour and silently drops magic links).
+
+project_id = "cqacfzkyxmtmjzpksznj"
+
+[auth]
+# Base URL of the app; used to build magic-link/confirmation redirects.
+site_url = "env(AUTH_SITE_URL)"
+additional_redirect_urls = ["http://localhost:5173"]
+# Access-token lifetime. 3600s is the Supabase default; bumped to 2h so
+# active players aren't bounced to re-auth mid-session. Refresh tokens
+# still rotate, so this is a modest, safe increase.
+jwt_expiry = 7200
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+
+[auth.email]
+enable_signup = true
+# Magic-link / OTP sign-in is what SAFE uses. Keep confirmations on.
+enable_confirmations = true
+# Give creators/players a slightly longer window to click the link.
+otp_expiry = 3600
+
+# --- Custom SMTP (fixes the rate-limited built-in email) -------------
+# Uses Resend by default; swap host/user for SendGrid/Postmark. The
+# password/API key is read from an env var so it is NEVER committed.
+# Set it before pushing:  export SUPABASE_AUTH_SMTP_PASS="re_..."
+[auth.email.smtp]
+enabled = true
+host = "env(SUPABASE_AUTH_SMTP_HOST)"
+port = 465
+user = "env(SUPABASE_AUTH_SMTP_USER)"
+pass = "env(SUPABASE_AUTH_SMTP_PASS)"
+admin_email = "env(SUPABASE_AUTH_SMTP_SENDER)"
+sender_name = "SAFE"
+
+# Raise the per-hour email cap now that delivery goes through a real
+# provider (the built-in default is intentionally tiny).
+[auth.rate_limit]
+email_sent = 100

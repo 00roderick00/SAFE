@@ -22,6 +22,26 @@ export const supabase = createClient(url ?? 'https://placeholder.supabase.co', a
   },
 });
 
+// supabase-js refreshes the access token on a timer, but that timer can
+// stall while the tab is backgrounded — the exact cause of the mid-use
+// "JWT expired" bounces in TESTING-FINDINGS P1.2. Re-arm the refresh
+// loop whenever the tab becomes visible again (and pause it when hidden)
+// so a returning user always has a fresh token. Guarded for non-browser
+// (test/SSR) environments.
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  const syncAutoRefresh = () => {
+    if (document.visibilityState === 'visible') {
+      // Kick an immediate refresh-if-needed, then resume the timer.
+      supabase.auth.startAutoRefresh();
+    } else {
+      supabase.auth.stopAutoRefresh();
+    }
+  };
+  document.addEventListener('visibilitychange', syncAutoRefresh);
+  // Arm it now for the initial (visible) load.
+  syncAutoRefresh();
+}
+
 export function isSupabaseConfigured(): boolean {
   return Boolean(url && anonKey);
 }

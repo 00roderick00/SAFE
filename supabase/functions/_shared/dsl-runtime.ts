@@ -158,10 +158,87 @@ export function tick(game: DslGame, state: DslState, playerDir: Direction, rng: 
 
 // -- Headless AI player -----------------------------------------
 
+const STEP_ORDER: Direction[] = ['up', 'down', 'left', 'right'];
+
+/**
+ * BFS shortest-path first step from the player toward the nearest of
+ * `targets`, planning over statically-passable cells (walls + board
+ * bounds; enemies are ignored for planning since they move — immediate
+ * safety is handled by the per-step threat filter in aiChooseDirection).
+ *
+ * Returns the first Direction to take along the shortest path, or null
+ * if no target is reachable. Deterministic: neighbours are always
+ * expanded in STEP_ORDER, so a given board yields a stable path.
+ *
+ * This replaces the old Manhattan-greedy chooser, which got stuck
+ * behind walls and made wall-heavy DSL games bimodal (trivially solved
+ * when open, unsolvable when the greedy heuristic dead-ended). A real
+ * pathfinder tracks the true difficulty far more tightly.
+ */
+function bfsFirstStep(
+  game: DslGame,
+  state: DslState,
+  targets: DslEntity[]
+): Direction | null {
+  if (targets.length === 0) return null;
+  const targetKeys = new Set(targets.map((t) => `${t.x},${t.y}`));
+  const start = state.player;
+  const startKey = `${start.x},${start.y}`;
+
+  // Static passability for planning (ignores enemies).
+  const passable = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= game.board.width || y >= game.board.height) return false;
+    for (const e of state.entities) {
+      if (e.kind === 'wall' && e.x === x && e.y === y) return false;
+    }
+    return true;
+  };
+
+  // BFS. cameFrom maps cellKey -> { prevKey, dir } so we can recover the
+  // first step once we reach a target.
+  const cameFrom = new Map<string, { prev: string; dir: Direction }>();
+  const queue: [number, number][] = [[start.x, start.y]];
+  const seen = new Set<string>([startKey]);
+  let reachedKey: string | null = null;
+
+  while (queue.length > 0) {
+    const [cx, cy] = queue.shift()!;
+    const key = `${cx},${cy}`;
+    if (targetKeys.has(key) && key !== startKey) {
+      reachedKey = key;
+      break;
+    }
+    for (const dir of STEP_ORDER) {
+      const [dx, dy] = delta(dir);
+      const nx = cx + dx;
+      const ny = cy + dy;
+      const nkey = `${nx},${ny}`;
+      if (seen.has(nkey) || !passable(nx, ny)) continue;
+      seen.add(nkey);
+      cameFrom.set(nkey, { prev: key, dir });
+      queue.push([nx, ny]);
+    }
+  }
+
+  if (!reachedKey) return null;
+  // Walk back from the target to the cell adjacent to start; that step's
+  // direction is the move to make now.
+  let cursor = reachedKey;
+  let firstDir: Direction | null = null;
+  while (cursor !== startKey) {
+    const step = cameFrom.get(cursor);
+    if (!step) return null; // shouldn't happen
+    firstDir = step.dir;
+    cursor = step.prev;
+  }
+  return firstDir;
+}
+
 /** Direction the AI player should move on the current tick.
- *  Deterministic given `rng`. Simple greedy heuristics per win
- *  condition; not perfect play — the goal is a plausible "typical
- *  player" not a solver. */
+ *  Deterministic given `rng`. Uses BFS pathfinding toward the nearest
+ *  objective (reach_goal / collect_all_tokens) with per-step enemy
+ *  avoidance; falls back to a greedy/evasive heuristic for `survive`
+ *  and when no path exists. */
 export function aiChooseDirection(game: DslGame, state: DslState, rng: () => number): Direction {
   const dirs: Direction[] = ['up', 'down', 'left', 'right'];
   const legal = dirs.filter(d => {
@@ -182,20 +259,34 @@ export function aiChooseDirection(game: DslGame, state: DslState, rng: () => num
   const pool = safe.length > 0 ? safe : legal;
 
   if (game.winCondition === 'reach_goal' || game.winCondition === 'collect_all_tokens') {
-    // Pick nearest unclaimed goal/token by Manhattan and move toward it.
     const wants = state.entities.filter((e) => {
       if (game.winCondition === 'reach_goal') return e.kind === 'goal';
       return e.kind === 'token' && !state.collected.has(e.id);
     });
     if (wants.length === 0) return pool[Math.floor(rng() * pool.length)];
+
+    // Prefer the true shortest path (BFS) over Manhattan greedy — it
+    // routes around walls instead of dead-ending against them.
+    const bfsDir = bfsFirstStep(game, state, wants);
+    if (bfsDir) {
+      const [bx, by] = delta(bfsDir);
+      const stepsIntoEnemy = enemies.some(
+        (en) => en.x === state.player.x + bx && en.y === state.player.y + by
+      );
+      // Take the optimal step unless it walks into an enemy AND a safe
+      // alternative exists.
+      if (!stepsIntoEnemy || safe.length === 0) return bfsDir;
+    }
+
+    // Fallback: no reachable path (or the path is blocked by an enemy) —
+    // greedily reduce Manhattan distance to the nearest objective over
+    // the currently-safe cells.
     let best = wants[0];
     let bestDist = Number.POSITIVE_INFINITY;
     for (const w of wants) {
       const d = Math.abs(w.x - state.player.x) + Math.abs(w.y - state.player.y);
       if (d < bestDist) { bestDist = d; best = w; }
     }
-    // Pick the legal direction that reduces Manhattan distance to `best`
-    // most; break ties randomly for exploration.
     let bestDir: Direction = pool[0];
     let bestNewDist = Number.POSITIVE_INFINITY;
     const shuffled = [...pool].sort(() => rng() - 0.5);

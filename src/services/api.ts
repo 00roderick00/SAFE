@@ -116,6 +116,8 @@ export interface CustomGame {
     aiSkill?: number;
     band?: { min: number; max: number };
     reason?: string;
+    /** Creator-facing "try this" nudge when the game missed the band. */
+    suggestion?: string;
   } | null;
   status: 'draft' | 'calibrating' | 'live' | 'rejected';
   plays: number;
@@ -127,10 +129,13 @@ export interface PublicCustomGame extends CustomGame {
 }
 
 export interface GenerateGameResponse {
-  customGame: CustomGame;
+  /** Null on a dry-run (preview) — nothing is persisted. */
+  customGame: CustomGame | null;
   calibration: CustomGame['calibration_stats'];
   moderation?: { safe: boolean; category: string; reason?: string; source: string };
   aiRaw?: string;
+  /** True when this was a dry-run difficulty preview, not a publish. */
+  preview?: boolean;
 }
 
 // ---------------------------------------------------------------
@@ -192,6 +197,8 @@ export const api = {
     mode?: 'engine_config' | 'dsl_program';
     /** Required when mode = engine_config. */
     baseEngine?: string;
+    /** When true, calibrate + return the estimate WITHOUT publishing. */
+    dryRun?: boolean;
   }): Promise<GenerateGameResponse> {
     return callFunction<GenerateGameResponse>('generate_game', input);
   },

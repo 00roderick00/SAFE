@@ -55,6 +55,31 @@ describe('playHeadless', () => {
     expect(trace.won).toBe(true);
     expect(trace.reason).toBe('goal_reached');
   });
+
+  it('BFS routes around a wall a greedy player would dead-end on', () => {
+    // Goal is directly right of the player, but a wall column blocks the
+    // straight line — the only path detours DOWN and around. Manhattan-
+    // greedy oscillates against the wall; BFS finds the detour and wins.
+    const dsl = validateDsl({
+      version: 1,
+      board: { width: 5, height: 5 },
+      timeLimit: 30,
+      winCondition: 'reach_goal',
+      entities: [
+        { id: 'p', kind: 'player', x: 0, y: 0 },
+        { id: 'g', kind: 'goal', x: 4, y: 0 },
+        { id: 'w0', kind: 'wall', x: 2, y: 0 },
+        { id: 'w1', kind: 'wall', x: 2, y: 1 },
+        { id: 'w2', kind: 'wall', x: 2, y: 2 },
+        { id: 'w3', kind: 'wall', x: 2, y: 3 },
+        // (2,4) is the only gap.
+      ],
+    });
+    if (!dsl.ok) throw new Error('setup');
+    const trace = playHeadless(dsl.program, 'detour');
+    expect(trace.won).toBe(true);
+    expect(trace.reason).toBe('goal_reached');
+  });
 });
 
 describe('calibrateDsl', () => {

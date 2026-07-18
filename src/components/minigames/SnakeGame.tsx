@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
-import { MiniGameResult, MiniGameProps } from '../../types';
+import { MiniGameProps } from '../../types';
 
 interface Position {
   x: number;

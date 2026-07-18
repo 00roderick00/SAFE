@@ -36,6 +36,8 @@ import { calibrate } from '../_shared/calibration.ts';
 import { validateDsl, DSL_LIMITS } from '../_shared/dsl.ts';
 import { calibrateDsl } from '../_shared/dsl-runtime.ts';
 import { moderate } from '../_shared/moderation.ts';
+import { sanitizeUserText } from '../_shared/sanitize.ts';
+import { suggestTweak } from '../_shared/suggestions.ts';
 
 interface GenerateBody {
   prompt?: string;
@@ -43,6 +45,10 @@ interface GenerateBody {
   statedDifficulty?: number;
   mode?: 'engine_config' | 'dsl_program';
   baseEngine?: string;
+  /** When true, run the full pipeline (moderation → AI → validate →
+   *  calibrate) but DO NOT persist a custom_games row. Used by the
+   *  builder's "Preview difficulty" dry-run so creators can iterate. */
+  dryRun?: boolean;
 }
 
 const MAX_PROMPT_LEN = 1000;
@@ -64,7 +70,13 @@ serve(async (req) => {
   }
 
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-  const name = typeof body.name === 'string' ? body.name.trim().slice(0, MAX_NAME_LEN) : '';
+  // Sanitize the title/description at write time so the DB never stores
+  // markup, control chars, or a raw prompt-injection blob. `description`
+  // is a cleaned slice of the prompt (not the raw prompt) — see
+  // _shared/sanitize.ts + src/utils/sanitize.ts.
+  const name = sanitizeUserText(body.name, { maxLength: MAX_NAME_LEN });
+  const description = sanitizeUserText(prompt, { maxLength: 400 });
+  const dryRun = body.dryRun === true;
   const mode = body.mode === 'dsl_program' ? 'dsl_program' : 'engine_config';
   const statedDifficulty = typeof body.statedDifficulty === 'number'
     ? Math.max(0, Math.min(1, body.statedDifficulty))
@@ -75,16 +87,27 @@ serve(async (req) => {
   }
   if (!name) return errorResponse('missing_name', 400);
 
-  // ------- Moderation (both modes) --------------------------------
+  // ------- Moderation + quality gate (both modes) -----------------
   const mod = await moderate(name, prompt);
   const supabase = serviceClient();
   if (!mod.safe) {
+    // Surface a creator-friendly reason for quality rejections.
+    const rejectReason = mod.source === 'quality' ? mod.reason ?? 'low_quality' : 'moderation';
+    // A dry-run never writes a row — just report why it was blocked.
+    if (dryRun) {
+      return jsonResponse({
+        preview: true,
+        customGame: null,
+        calibration: { passes: false, reason: rejectReason, moderation: mod },
+        moderation: mod,
+      });
+    }
     const { data: rejectedRow } = await supabase
       .from('custom_games')
       .insert({
         creator_id: userId,
         name,
-        description: prompt.slice(0, 400),
+        description,
         prompt,
         base_engine: mode === 'engine_config' ? (body.baseEngine ?? 'maze') : 'maze',
         mode,
@@ -94,7 +117,7 @@ serve(async (req) => {
         calibrated_difficulty: null,
         calibration_stats: {
           passes: false,
-          reason: 'moderation',
+          reason: rejectReason,
           moderation: mod,
         },
         status: 'rejected',
@@ -103,7 +126,7 @@ serve(async (req) => {
       .single();
     return jsonResponse({
       customGame: rejectedRow,
-      calibration: { passes: false, reason: 'moderation', moderation: mod },
+      calibration: { passes: false, reason: rejectReason, moderation: mod },
       moderation: mod,
     });
   }
@@ -171,21 +194,37 @@ serve(async (req) => {
     const calibration = calibrate(baseEngine, validated.config, {
       seed: `${userId}:${Date.now()}`,
     });
+    // Concrete "try this" nudge when the config missed the band.
+    const suggestion = calibration.passes
+      ? undefined
+      : suggestTweak({ mode: 'engine_config', engine: baseEngine, config: validated.config, reason: calibration.reason });
+    const calibrationOut = { ...calibration, suggestion };
     const status = calibration.passes ? 'live' : 'rejected';
+
+    // Dry-run: report the calibration estimate without persisting.
+    if (dryRun) {
+      return jsonResponse({
+        preview: true,
+        customGame: null,
+        calibration: calibrationOut,
+        moderation: mod,
+        aiRaw: raw.slice(0, 500),
+      });
+    }
 
     const { data: row, error: insertErr } = await supabase
       .from('custom_games')
       .insert({
         creator_id: userId,
         name,
-        description: prompt.slice(0, 400),
+        description,
         prompt,
         base_engine: baseEngine,
         mode: 'engine_config',
         config: validated.config,
         stated_difficulty: statedDifficulty,
         calibrated_difficulty: calibration.calibratedDifficulty,
-        calibration_stats: { ...calibration, moderation: mod },
+        calibration_stats: { ...calibrationOut, moderation: mod },
         status,
       })
       .select()
@@ -195,7 +234,7 @@ serve(async (req) => {
     }
     return jsonResponse({
       customGame: row,
-      calibration,
+      calibration: calibrationOut,
       moderation: mod,
       aiRaw: raw.slice(0, 500),
     });
@@ -254,14 +293,30 @@ serve(async (req) => {
   const dslCalibration = calibrateDsl(dslValidated.program, {
     seedPrefix: `${userId}:${Date.now()}`,
   });
+  const dslSuggestion = dslCalibration.passes
+    ? undefined
+    : suggestTweak({ mode: 'dsl_program', dsl: dslValidated.program, reason: dslCalibration.reason });
+  const dslCalibrationOut = { ...dslCalibration, suggestion: dslSuggestion };
   const dslStatus = dslCalibration.passes ? 'live' : 'rejected';
+
+  // Dry-run: report the real-runner solve-rate estimate + tweak without
+  // persisting, so creators can iterate before publishing.
+  if (dryRun) {
+    return jsonResponse({
+      preview: true,
+      customGame: null,
+      calibration: dslCalibrationOut,
+      moderation: mod,
+      aiRaw: dslRaw.slice(0, 800),
+    });
+  }
 
   const { data: dslRow, error: dslErr } = await supabase
     .from('custom_games')
     .insert({
       creator_id: userId,
       name,
-      description: prompt.slice(0, 400),
+      description,
       prompt,
       base_engine: 'maze', // nominal — DSL runtime drives gameplay
       mode: 'dsl_program',
@@ -269,7 +324,7 @@ serve(async (req) => {
       dsl_program: dslValidated.program,
       stated_difficulty: statedDifficulty,
       calibrated_difficulty: dslCalibration.calibratedDifficulty,
-      calibration_stats: { ...dslCalibration, moderation: mod },
+      calibration_stats: { ...dslCalibrationOut, moderation: mod },
       status: dslStatus,
     })
     .select()
@@ -280,7 +335,7 @@ serve(async (req) => {
 
   return jsonResponse({
     customGame: dslRow,
-    calibration: dslCalibration,
+    calibration: dslCalibrationOut,
     moderation: mod,
     aiRaw: dslRaw.slice(0, 800),
   });

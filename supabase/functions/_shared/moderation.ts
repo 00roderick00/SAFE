@@ -10,6 +10,7 @@
 // passes the block-list is sent to Anthropic for the real check.
 
 import { callAnthropic, extractJsonObject } from './anthropic.ts';
+import { qualityCheck } from './sanitize.ts';
 
 export type ModerationCategory =
   | 'clean'
@@ -18,13 +19,14 @@ export type ModerationCategory =
   | 'violence'
   | 'personal_info'
   | 'illegal'
+  | 'low_quality'
   | 'other';
 
 export interface ModerationResult {
   safe: boolean;
   category: ModerationCategory;
   reason?: string;
-  source: 'blocklist' | 'ai' | 'fail_open';
+  source: 'blocklist' | 'quality' | 'ai' | 'fail_open';
 }
 
 // Small local block-list. Not exhaustive; the AI check is the real
@@ -50,6 +52,18 @@ export async function moderate(title: string, prompt: string): Promise<Moderatio
         source: 'blocklist',
       };
     }
+  }
+
+  // Deterministic quality gate (spam / garbage / mashed-key titles /
+  // prompt-injection strings). Runs before we pay for an AI call.
+  const quality = qualityCheck(title, prompt);
+  if (!quality.ok) {
+    return {
+      safe: false,
+      category: 'low_quality',
+      reason: `low_quality:${quality.reason}`,
+      source: 'quality',
+    };
   }
 
   const system =

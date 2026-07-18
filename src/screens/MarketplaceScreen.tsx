@@ -6,16 +6,24 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Sparkles, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Sparkles, CheckCircle, Loader2 } from 'lucide-react';
 import { api, type PublicCustomGame } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
+import { supabase } from '../services/supabaseClient';
+import { buildCustomModule } from '../game/loadout';
+import { sanitizeUserText } from '../utils/sanitize';
 
 export const MarketplaceScreen = () => {
   const navigate = useNavigate();
-  const { securityLoadout } = usePlayerStore();
+  // Subscribe to the loadout so equipped-slot badges reflect the
+  // *persisted* store, not transient button clicks.
+  const securityLoadout = usePlayerStore((s) => s.securityLoadout);
   const [games, setGames] = useState<PublicCustomGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  // Which "<gameId>:<slot>" button is mid-write, and any equip error.
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [equipErr, setEquipErr] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,37 +42,49 @@ export const MarketplaceScreen = () => {
     };
   }, []);
 
+  // Reliable, idempotent equip. The old version had three first-click
+  // failure modes: (1) it read a possibly-stale `securityLoadout`
+  // captured at render, (2) it used `getUser()` — a network call that
+  // can transiently return no user right after load, silently skipping
+  // the server write, and (3) it updated the client store BEFORE the
+  // server write, so a late server-hydrate could clobber it. This
+  // version reads fresh state, resolves the session from the cached
+  // `getSession()`, writes to the server FIRST, and only then updates
+  // the local store — so a single click always persists.
   const equip = async (g: PublicCustomGame, slotIndex: number) => {
-    const newModules = [...securityLoadout.modules];
-    const isDsl = g.mode === 'dsl_program';
-    const payload = isDsl ? g.dsl_program : g.config;
-    newModules[slotIndex] = {
-      id: `${g.id}-slot-${slotIndex}`,
-      type: g.base_engine as never,
-      difficulty: g.calibrated_difficulty ?? 0.5,
-      weight: 1,
-      name: g.name,
-      description: g.description,
-      customGameId: g.id,
-      customConfig: {
-        baseEngine: g.base_engine as never,
-        config: payload ?? {},
-        mode: g.mode,
-      },
-    };
-    const { updateSecurityModule } = usePlayerStore.getState();
-    updateSecurityModule(slotIndex, newModules[slotIndex]);
-    // Server-side: also write to safes.security_loadout so the
-    // module is durable and attackers see it. See api.updateLoadout.
-    const session = (await import('../services/supabaseClient')).supabase.auth;
-    const { data } = await session.getUser();
-    if (data.user) {
-      await api.updateLoadout(data.user.id, {
+    const key = `${g.id}:${slotIndex}`;
+    if (savingKey) return; // ignore double-clicks while a write is in flight
+    setEquipErr(null);
+    setSavingKey(key);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        setEquipErr('Your session expired — sign in again to equip.');
+        return;
+      }
+
+      // Read the latest loadout from the store (not the render-time
+      // closure) so concurrent hydration/equips don't drop modules.
+      const current = usePlayerStore.getState().securityLoadout;
+      const newModules = [...current.modules];
+      newModules[slotIndex] = buildCustomModule(g, slotIndex);
+      const newLoadout = {
         modules: newModules,
-        effectiveScore: securityLoadout.effectiveScore,
-      });
+        effectiveScore: current.effectiveScore,
+      };
+
+      // Server write is authoritative — await it before touching local
+      // state so we reflect what actually persisted.
+      await api.updateLoadout(session.user.id, newLoadout);
+      usePlayerStore.getState().updateSecurityModule(slotIndex, newModules[slotIndex]);
+      navigate('/security');
+    } catch (e) {
+      setEquipErr(e instanceof Error ? e.message : 'Failed to equip — try again.');
+    } finally {
+      setSavingKey(null);
     }
-    navigate('/security');
   };
 
   return (
@@ -89,6 +109,11 @@ export const MarketplaceScreen = () => {
 
         {loading && <p className="text-text-dim">Loading…</p>}
         {err && <p className="text-danger">{err}</p>}
+        {equipErr && (
+          <p className="text-danger text-sm mb-4" role="alert">
+            {equipErr}
+          </p>
+        )}
 
         {!loading && games.length === 0 && (
           <div className="text-center py-12">
@@ -107,9 +132,9 @@ export const MarketplaceScreen = () => {
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="font-semibold">{g.name}</h3>
+                  <h3 className="font-semibold">{sanitizeUserText(g.name, { maxLength: 60 })}</h3>
                   <p className="text-xs text-text-dim">
-                    by {g.creator_handle ?? 'anon'} · base: {g.base_engine}
+                    by {sanitizeUserText(g.creator_handle ?? 'anon', { maxLength: 40 })} · base: {g.base_engine}
                   </p>
                 </div>
                 <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/20 text-primary">
@@ -118,7 +143,9 @@ export const MarketplaceScreen = () => {
                 </span>
               </div>
               {g.description && (
-                <p className="text-sm text-text-dim mt-2 line-clamp-2">{g.description}</p>
+                <p className="text-sm text-text-dim mt-2 line-clamp-2">
+                  {sanitizeUserText(g.description, { maxLength: 200 })}
+                </p>
               )}
               <div className="bg-surface-light rounded-lg p-3 mt-3 text-sm">
                 <div className="flex justify-between">
@@ -135,16 +162,35 @@ export const MarketplaceScreen = () => {
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-3">
-                {[0, 1, 2].map((i) => (
-                  <button
-                    key={i}
-                    onClick={() => equip(g, i)}
-                    className="text-xs py-2 rounded-lg bg-surface-light border border-border hover:bg-primary/10 hover:border-primary inline-flex items-center justify-center gap-1"
-                  >
-                    <Sparkles size={12} />
-                    Slot {i + 1}
-                  </button>
-                ))}
+                {[0, 1, 2].map((i) => {
+                  const key = `${g.id}:${i}`;
+                  const isSaving = savingKey === key;
+                  // Reflect the *persisted* store: is this game already
+                  // in this slot?
+                  const isEquipped = securityLoadout.modules[i]?.customGameId === g.id;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => equip(g, i)}
+                      disabled={savingKey !== null}
+                      aria-label={`Equip ${sanitizeUserText(g.name, { maxLength: 60 })} to slot ${i + 1}`}
+                      className={`text-xs py-2 rounded-lg border inline-flex items-center justify-center gap-1 disabled:opacity-60 ${
+                        isEquipped
+                          ? 'bg-primary/20 border-primary text-primary'
+                          : 'bg-surface-light border-border hover:bg-primary/10 hover:border-primary'
+                      }`}
+                    >
+                      {isSaving ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : isEquipped ? (
+                        <CheckCircle size={12} />
+                      ) : (
+                        <Sparkles size={12} />
+                      )}
+                      {isEquipped ? `Slot ${i + 1} ✓` : `Slot ${i + 1}`}
+                    </button>
+                  );
+                })}
               </div>
             </motion.div>
           ))}

@@ -10,9 +10,33 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Sparkles, CheckCircle, XCircle, Loader2, Store } from 'lucide-react';
-import { api, type CustomGame } from '../services/api';
+import { ArrowLeft, Plus, Sparkles, CheckCircle, XCircle, Loader2, Store, Gauge } from 'lucide-react';
+import { api, type CustomGame, type GenerateGameResponse } from '../services/api';
 import { useSession } from '../services/useSession';
+import { sanitizeUserText } from '../utils/sanitize';
+
+// The calibration band creators must land in for a game to go live.
+const BAND = { min: 0.3, max: 0.7 };
+
+type PreviewState = {
+  solveRate?: number;
+  reason?: string;
+  suggestion?: string;
+  passes: boolean;
+  blocked?: boolean; // moderation/quality block (not a difficulty miss)
+};
+
+function toPreview(res: GenerateGameResponse): PreviewState {
+  const c = res.calibration;
+  const blocked = res.moderation ? res.moderation.safe === false : false;
+  return {
+    solveRate: c?.solveRate,
+    reason: c?.reason,
+    suggestion: c?.suggestion,
+    passes: Boolean(c?.passes),
+    blocked,
+  };
+}
 
 const SUPPORTED_ENGINES: { id: string; label: string; blurb: string }[] = [
   { id: 'maze', label: 'Maze', blurb: 'Traverse a grid maze under a timer' },
@@ -30,6 +54,8 @@ export const CustomGameScreen = () => {
   const [games, setGames] = useState<CustomGame[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const [name, setName] = useState('');
@@ -54,23 +80,51 @@ export const CustomGameScreen = () => {
     };
   }, [session]);
 
+  const baseArgs = () => ({
+    prompt: prompt.trim(),
+    name: name.trim(),
+    statedDifficulty,
+    mode,
+    ...(mode === 'engine_config' ? { baseEngine: engine } : {}),
+  });
+
+  // Dry-run: calibrate + return the solve-rate estimate and a concrete
+  // tweak WITHOUT publishing, so creators can iterate toward the band
+  // (TESTING-FINDINGS P2.3). Nothing is added to the games list.
+  const handlePreview = async () => {
+    setErr(null);
+    if (!name.trim() || !prompt.trim()) return;
+    setPreviewing(true);
+    setPreview(null);
+    try {
+      const res = await api.generateGame({ ...baseArgs(), dryRun: true });
+      setPreview(toPreview(res));
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : 'Preview failed');
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
     if (!name.trim() || !prompt.trim()) return;
     setBusy(true);
     try {
-      const res = await api.generateGame({
-        prompt: prompt.trim(),
-        name: name.trim(),
-        statedDifficulty,
-        mode,
-        ...(mode === 'engine_config' ? { baseEngine: engine } : {}),
-      });
-      setGames((prev) => [res.customGame, ...prev]);
-      setName('');
-      setPrompt('');
-      setShowForm(false);
+      const res = await api.generateGame(baseArgs());
+      if (res.customGame) setGames((prev) => [res.customGame as CustomGame, ...prev]);
+      // If the game was rejected on publish, keep the form open and show
+      // the estimate + suggestion so the creator can adjust and retry.
+      const p = toPreview(res);
+      if (p.passes && res.customGame) {
+        setName('');
+        setPrompt('');
+        setPreview(null);
+        setShowForm(false);
+      } else {
+        setPreview(p);
+      }
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : 'Generation failed');
     } finally {
@@ -223,19 +277,32 @@ export const CustomGameScreen = () => {
 
                 {err && <p className="text-sm text-danger">{err}</p>}
 
+                {preview && <PreviewBox preview={preview} band={BAND} />}
+
                 <div className="flex gap-3">
                   <button
                     type="button"
-                    onClick={() => setShowForm(false)}
-                    className="flex-1 py-2 bg-surface border border-border rounded-lg hover:bg-surface-light"
-                    disabled={busy}
+                    onClick={handlePreview}
+                    className="flex-1 py-2 bg-surface border border-border rounded-lg hover:bg-surface-light disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                    disabled={busy || previewing}
+                    title="Estimate the solve rate without publishing"
                   >
-                    Cancel
+                    {previewing ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Checking…
+                      </>
+                    ) : (
+                      <>
+                        <Gauge size={16} />
+                        Preview difficulty
+                      </>
+                    )}
                   </button>
                   <button
                     type="submit"
                     className="flex-1 py-2 bg-primary text-background font-medium rounded-lg hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
-                    disabled={busy}
+                    disabled={busy || previewing}
                   >
                     {busy ? (
                       <>
@@ -283,7 +350,7 @@ const CustomGameRow = ({ game }: { game: CustomGame }) => {
     >
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="font-semibold">{game.name}</h3>
+          <h3 className="font-semibold">{sanitizeUserText(game.name, { maxLength: 60 })}</h3>
           <p className="text-xs text-text-dim">
             Base engine: {game.base_engine}
           </p>
@@ -291,7 +358,9 @@ const CustomGameRow = ({ game }: { game: CustomGame }) => {
         <StatusPill status={game.status} />
       </div>
       {game.description && (
-        <p className="text-sm text-text-dim mt-2 line-clamp-2">{game.description}</p>
+        <p className="text-sm text-text-dim mt-2 line-clamp-2">
+          {sanitizeUserText(game.description, { maxLength: 200 })}
+        </p>
       )}
       {game.calibration_stats && (
         <div className="bg-surface-light rounded-lg p-3 mt-3 text-sm space-y-1">
@@ -316,9 +385,57 @@ const CustomGameRow = ({ game }: { game: CustomGame }) => {
               Rejected: {game.calibration_stats.reason}
             </p>
           )}
+          {game.calibration_stats.suggestion && (
+            <p className="text-xs text-text pt-2">
+              💡 {game.calibration_stats.suggestion}
+            </p>
+          )}
         </div>
       )}
     </motion.div>
+  );
+};
+
+// Inline dry-run / rejection feedback: shows the estimated solve rate
+// against the live band and a concrete tweak when out of range.
+const PreviewBox = ({ preview, band }: { preview: PreviewState; band: { min: number; max: number } }) => {
+  const pct = (n: number) => `${Math.round(n * 100)}%`;
+  const inBand = preview.passes;
+  return (
+    <div
+      className={`rounded-lg p-3 text-sm border ${
+        inBand ? 'bg-primary/10 border-primary/40' : 'bg-surface-light border-warning/40'
+      }`}
+    >
+      {preview.blocked ? (
+        <p className="text-warning">
+          Blocked before calibration — {preview.reason ?? 'rejected'}. Edit the title/prompt and try again.
+        </p>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <span className="text-text-dim">Estimated solve rate</span>
+            <span className={inBand ? 'text-primary font-medium' : 'text-warning font-medium'}>
+              {preview.solveRate !== undefined ? pct(preview.solveRate) : '—'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs text-text-dim mt-1">
+            <span>Live band</span>
+            <span>{pct(band.min)}–{pct(band.max)}</span>
+          </div>
+          <p className={`text-xs mt-2 ${inBand ? 'text-primary' : 'text-warning'}`}>
+            {inBand
+              ? '✓ In the band — this will publish as live.'
+              : preview.reason === 'too_hard'
+                ? 'Too hard for the live band.'
+                : 'Too easy for the live band.'}
+          </p>
+          {!inBand && preview.suggestion && (
+            <p className="text-xs text-text mt-1">💡 {preview.suggestion}</p>
+          )}
+        </>
+      )}
+    </div>
   );
 };
 
