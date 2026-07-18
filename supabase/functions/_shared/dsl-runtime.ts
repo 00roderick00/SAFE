@@ -356,6 +356,38 @@ export function playHeadless(game: DslGame, seed: string): DslRunTrace {
   };
 }
 
+/**
+ * Replay a human player's recorded input trace from the issued seed to
+ * decide, SERVER-SIDE, whether the game was actually won. This is the
+ * anti-cheat backbone (TESTING-FINDINGS-2 P0.1): submit_result ignores
+ * the client's self-reported `passed`/`score` for DSL modules and trusts
+ * only this deterministic replay.
+ *
+ * `seed` must be the exact per-module seed the client rendered with
+ * (client seeds its enemy RNG from the same string via the identical
+ * xmur3→mulberry32 generator), so the enemy motion here matches what
+ * the player faced. `dirs[i]` is the direction the player applied on
+ * tick i+1; ticks past the trace are played as `idle`, and the runtime's
+ * own timeout/collision rules decide the terminal state — so a partial
+ * or padded trace can never fabricate a win.
+ */
+export function replayDslTrace(
+  game: DslGame,
+  seed: string,
+  dirs: Direction[]
+): { won: boolean; reason?: string; ticks: number } {
+  const rng = createRng(seed);
+  const state = initState(game);
+  const maxTicks = game.timeLimit * TICK_HZ + 5;
+  let i = 0;
+  while (state.status === 'running' && state.tick < maxTicks) {
+    const dir = i < dirs.length ? dirs[i] : 'idle';
+    tick(game, state, dir, rng);
+    i++;
+  }
+  return { won: state.status === 'won', reason: state.reason, ticks: state.tick };
+}
+
 export function calibrateDsl(
   game: DslGame,
   options: {

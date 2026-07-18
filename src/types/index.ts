@@ -205,6 +205,11 @@ export interface MiniGameResult {
   score: number; // 0-1
   passed: boolean;
   timeSpent: number; // ms
+  /** Ordered per-tick player directions for DSL games. Sent to the
+   *  server so it can deterministically REPLAY the run from the issued
+   *  seed and verify the win itself (see _shared/verify.ts). Absent for
+   *  non-DSL games. */
+  inputTrace?: ('up' | 'down' | 'left' | 'right' | 'idle')[];
 }
 
 // Insurance plan options

@@ -116,13 +116,17 @@ export function computeCreatorRoyalty(input: {
   if (input.distinctCreators <= 0) {
     return { perCreator: 0, totalRoyalty: 0 };
   }
+  const floor = ECONOMY.creatorMinRoyalty;
   if (input.outcome === 'won') {
-    const pool = Math.round(input.platformReceivesOnWin * 0.2);
-    const per = Math.floor(pool / input.distinctCreators);
+    const pool = Math.round(input.platformReceivesOnWin * ECONOMY.creatorWinShare);
+    // Never round a real play down to zero — creators earn at least the
+    // per-play floor on every attack that hits their game.
+    const per = Math.max(floor, Math.floor(pool / input.distinctCreators));
     return { perCreator: per, totalRoyalty: per * input.distinctCreators };
   }
-  // Loss / abandon: fixed 2% of stake per creator.
-  const per = Math.floor(input.stake * 0.02);
+  // Loss / abandon: 2% of stake per creator, floored so small stakes
+  // (16–35 tokens, where 2% < 1) still pay a whole-token micro-royalty.
+  const per = Math.max(floor, Math.floor(input.stake * ECONOMY.creatorLossRoyaltyRate));
   return { perCreator: per, totalRoyalty: per * input.distinctCreators };
 }
 

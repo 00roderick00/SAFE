@@ -165,6 +165,8 @@ export const api = {
       score: number;
       passed: boolean;
       timeSpent: number;
+      /** DSL-only: per-tick player directions for server-side replay. */
+      inputTrace?: ('up' | 'down' | 'left' | 'right' | 'idle')[];
     }[];
   }): Promise<SubmitResultPayload> {
     return callFunction<SubmitResultPayload>('submit_result', input);

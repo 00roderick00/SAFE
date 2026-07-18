@@ -9,6 +9,14 @@ export const ECONOMY = {
   platformCut: 0.08, // t - 8% of loot goes to platform (was 10%)
   platformCutFail: 0.00, // t_fail - 0% of failed fees (keep low for encouragement)
 
+  // Creator royalties (per distinct custom-game creator in a loadout).
+  // Win: share of the platform cut. Loss/both: a flat per-play floor so
+  // small-stake losses don't round the royalty to zero — the failure in
+  // TESTING-FINDINGS-2 where a 16-stake loss paid the creator 0.
+  creatorWinShare: 0.20, // 20% of platform's cut on a won attack
+  creatorLossRoyaltyRate: 0.02, // 2% of stake on a lost attack
+  creatorMinRoyalty: 1, // floor: every play pays each creator >= 1 token
+
   // Fee calculation: F = sqrt(V) * (a + b/(1+S))
   // Reduced fees to compensate for all-or-nothing lock system
   feeParams: {

@@ -62,7 +62,7 @@ export const HeistScreen = () => {
     exitHeistMode,
   } = usePlayerStore();
 
-  const { botSafes, refreshBotSafes, refreshTargetsFromServer, recentlyAttacked, recordBotAttacked } =
+  const { botSafes, refreshBotSafes, refreshTargetsFromServer, recentlyAttacked, recordBotAttacked, targetsSource } =
     useGameStore();
 
   const { startAttack, startServerAttack } = useHeistStore();
@@ -86,7 +86,7 @@ export const HeistScreen = () => {
   const handleRefresh = async () => {
     haptics.light();
     setRefreshing(true);
-    if (session) {
+    if (session?.user?.id) {
       await refreshTargetsFromServer(session.user.id, riskRating);
     } else {
       await new Promise((r) => setTimeout(r, 500));
@@ -95,15 +95,22 @@ export const HeistScreen = () => {
     setRefreshing(false);
   };
 
-  // Initial load: real safes + bot backfill when signed in.
+  // Initial load. useSession returns `undefined` while the session is
+  // still resolving — the old code treated that as "signed out" and
+  // eagerly loaded client bots, which then blocked the real
+  // list_targets load once the session arrived (TESTING-FINDINGS-2 P1).
+  // Gate strictly: do nothing while loading; load server targets once we
+  // have a user; only fall back to client bots when definitively anon.
+  const sessionKey = session === undefined ? 'loading' : session?.user?.id ?? 'anon';
   useEffect(() => {
-    if (session && botSafes.length === 0) {
+    if (sessionKey === 'loading') return;
+    if (session?.user?.id) {
       refreshTargetsFromServer(session.user.id, riskRating);
-    } else if (!session && botSafes.length === 0) {
+    } else {
       refreshBotSafes(riskRating);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [sessionKey]);
 
   const handleSelectTarget = (safe: BotSafe) => {
     if (safe.attackFee > safeBalance) return;
@@ -202,6 +209,17 @@ export const HeistScreen = () => {
           </div>
         </div>
       </div>
+
+      {/* Offline fallback notice: real players (and their custom games)
+          are only reachable through the live server list. */}
+      {session?.user?.id && targetsSource === 'local' && (
+        <div className="px-4 mt-3">
+          <div className="flex items-center justify-between gap-2 text-xs rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-warning">
+            <span>Couldn't reach the live target server — showing practice bots only.</span>
+            <button onClick={handleRefresh} className="underline shrink-0">Retry</button>
+          </div>
+        </div>
+      )}
 
       {/* Available Balance */}
       <div className="px-4 mt-4">

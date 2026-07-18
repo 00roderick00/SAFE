@@ -2,20 +2,20 @@
 //
 // Body: {
 //   attackId: string,
-//   results: Array<{ moduleIndex, moduleType, score, passed, timeSpent }>
+//   results: Array<{ moduleIndex, moduleType, score, passed, timeSpent, inputTrace? }>
 // }
 //
 // Server:
 //   1. Loads the attack + its seeds/loadout.
-//   2. If already resolved, returns the current state (idempotent —
-//      the client can safely retry, double-click, or replay this
-//      call from hydrate cleanup without risking a double-pay).
-//   3. Runs plausibility checks against submitted results. `results`
-//      may be shorter than the loadout (early exit / abandon) —
-//      missing modules are recorded as failed.
-//   4. Applies all-or-nothing model.
-//   5. Writes ledger for loot/insurance/platform-cut.
-//   6. Records attack_results + marks the attack as won/lost.
+//   2. If already resolved, returns the current state (idempotent).
+//   3. VERIFIES the outcome server-side (verifyAttack): DSL modules are
+//      decided by deterministic replay of the client's input trace from
+//      the issued seed; non-DSL modules fall back to plausibility. The
+//      client's self-reported passed/score is NOT trusted for wins.
+//   4. Computes loot/royalty/insurance, then commits EVERYTHING —
+//      results + ledger + plays + insurance + status — in one atomic
+//      RPC (settle_attack). If the commit can't happen, we return an
+//      error instead of a fake "won".
 
 import { serve } from 'https://deno.land/std@0.203.0/http/server.ts';
 import {
@@ -25,18 +25,24 @@ import {
   jsonResponse,
   serviceClient,
 } from '../_shared/http.ts';
-import { checkPlausibility, type SubmittedResult } from '../_shared/plausibility.ts';
-import { computeCreatorRoyalty, computeLootSplit } from '../_shared/attack-flow.ts';
+import { computeCreatorRoyalty, computeLootSplit, type AttackModuleSeed } from '../_shared/attack-flow.ts';
+import { verifyAttack, type SubmittedResultV } from '../_shared/verify.ts';
 import type { SecurityLoadout } from '../_shared/types.ts';
 
 interface SubmitBody {
   attackId: string;
-  results: SubmittedResult[];
+  results: SubmittedResultV[];
 }
 
-// The Supabase client type is intentionally loose here — this file is
-// bundled for Deno and imports the client from esm.sh; the full type
-// signature isn't available to our client tsc.
+interface LedgerEntry {
+  user_id: string | null;
+  delta: number;
+  reason: string;
+  ref_type: string;
+  ref_id: string | null;
+}
+
+// deno-lint-ignore no-explicit-any
 async function resolvedPayload(supabase: any, attack: any, userId: string) {
   const { data: rows } = await supabase
     .from('attack_results')
@@ -92,19 +98,15 @@ serve(async (req) => {
   if (attackErr || !attack) return errorResponse('attack_not_found', 404);
   if (attack.attacker_id !== userId) return errorResponse('not_your_attack', 403);
 
-  // Idempotency: already resolved? Return the current state so the
-  // client can update its UI. No ledger writes; no double-pay.
+  // Idempotency: already resolved? Return the current state.
   if (attack.status !== 'pending') {
     return await resolvedPayload(supabase, attack, userId);
   }
 
   const loadout: SecurityLoadout = attack.loadout_snapshot;
+  const moduleSeeds: AttackModuleSeed[] = Array.isArray(attack.module_seeds) ? attack.module_seeds : [];
   const expectedModules = loadout.modules.length;
 
-  // Allow fewer results than expected — missing modules are treated
-  // as failed (all-or-nothing means the whole attack is lost anyway).
-  // This handles win (N=N), early-exit-on-fail (N<expected), and
-  // full abandon (N=0).
   if (body.results.length > expectedModules) {
     return errorResponse('too_many_results', 400, {
       expected: expectedModules,
@@ -112,63 +114,24 @@ serve(async (req) => {
     });
   }
 
-  // Plausibility + all-or-nothing.
-  const rows: {
-    attack_id: string;
-    module_index: number;
-    module_type: string;
-    score: number;
-    passed: boolean;
-    time_spent_ms: number;
-  }[] = [];
-  let allPassed = expectedModules > 0; // vacuously true only if there ARE modules submitted
-  let submittedCount = 0;
-
-  for (let i = 0; i < expectedModules; i++) {
-    const mod = loadout.modules[i];
-
-    if (i < body.results.length) {
-      // Client-submitted result for module i.
-      const r = body.results[i];
-      if (r.moduleIndex !== i) return errorResponse('module_index_out_of_order', 400, { at: i });
-      if (r.moduleType !== mod.type) return errorResponse('module_type_mismatch', 400, { at: i });
-
-      const verdict = checkPlausibility(r, mod.difficulty);
-      if (!verdict.ok) {
-        return errorResponse('implausible_result', 422, { at: i, reason: verdict.reason });
-      }
-      rows.push({
-        attack_id: attack.id,
-        module_index: i,
-        module_type: mod.type,
-        score: verdict.adjustedScore,
-        passed: verdict.adjustedPassed,
-        time_spent_ms: Math.min(180_000, Math.round(r.timeSpent)),
-      });
-      submittedCount++;
-      if (!verdict.adjustedPassed) allPassed = false;
-    } else {
-      // Missing result — count as a failed lock (attack abandoned or
-      // ended early on a prior failure).
-      rows.push({
-        attack_id: attack.id,
-        module_index: i,
-        module_type: mod.type,
-        score: 0,
-        passed: false,
-        time_spent_ms: 0,
-      });
-      allPassed = false;
-    }
+  // ------- Server-side verification (P0.1) ------------------------
+  const verified = verifyAttack(attack.id, loadout, moduleSeeds, body.results);
+  if (!verified.ok) {
+    const httpStatus = verified.error === 'implausible_result' ? 422 : 400;
+    return errorResponse(verified.error, httpStatus, { at: verified.at, reason: verified.reason });
   }
 
-  // If the client submitted nothing AND the loadout has zero modules
-  // (edge case — shouldn't happen since start_attack requires a
-  // loadout, but guard against divide-by-zero downstream), treat as
-  // lost.
-  if (expectedModules === 0) allPassed = false;
+  // Strip the internal `method`/`reason` fields — attack_results only
+  // stores the 5 columns settle_attack inserts.
+  const resultRows = verified.rows.map((r) => ({
+    module_index: r.module_index,
+    module_type: r.module_type,
+    score: r.score,
+    passed: r.passed,
+    time_spent_ms: r.time_spent_ms,
+  }));
 
-  // Determine outcome and defender balance for loot calc.
+  // Determine outcome + defender for loot math.
   let defenderBalance = 0;
   let defenderOwnerId: string | null = null;
   if (attack.is_bot_target) {
@@ -187,43 +150,23 @@ serve(async (req) => {
   const { potentialLoot, attackerReceives, platformReceives, defenderLoses } =
     computeLootSplit(defenderBalance);
 
-  const status: 'won' | 'lost' = allPassed && submittedCount === expectedModules ? 'won' : 'lost';
+  const status: 'won' | 'lost' =
+    verified.allPassed && verified.submittedCount === expectedModules ? 'won' : 'lost';
   const loot = status === 'won' ? potentialLoot : 0;
   const platformFee = status === 'won' ? platformReceives : 0;
 
-  // Persist attack_results (PK on attack_id + module_index protects
-  // against a same-request double insert but not against a retried
-  // request racing — we guard with the status='pending' check above).
-  const { error: resultsErr } = await supabase.from('attack_results').insert(rows);
-  if (resultsErr) return errorResponse('results_insert_failed', 500, { detail: resultsErr.message });
+  // ------- Build the atomic ledger batch --------------------------
+  const ledger: LedgerEntry[] = [];
+  let insurancePolicyId: string | null = null;
+  let insuranceNewClaims: number | null = null;
 
-  // Ledger effects.
   if (status === 'won') {
-    await supabase.rpc('insert_ledger', {
-      p_user_id: userId,
-      p_delta: attackerReceives,
-      p_reason: 'attack_loot',
-      p_ref_type: 'attack',
-      p_ref_id: attack.id,
-    });
-    await supabase.rpc('insert_ledger', {
-      p_user_id: null,
-      p_delta: platformReceives,
-      p_reason: 'platform_cut',
-      p_ref_type: 'attack',
-      p_ref_id: attack.id,
-    });
+    ledger.push({ user_id: userId, delta: attackerReceives, reason: 'attack_loot', ref_type: 'attack', ref_id: attack.id });
+    ledger.push({ user_id: null, delta: platformReceives, reason: 'platform_cut', ref_type: 'attack', ref_id: attack.id });
     if (!attack.is_bot_target && defenderOwnerId) {
       const cappedLoss = Math.min(defenderLoses, defenderBalance);
-      await supabase.rpc('insert_ledger', {
-        p_user_id: defenderOwnerId,
-        p_delta: -cappedLoss,
-        p_reason: 'defense_loss',
-        p_ref_type: 'attack',
-        p_ref_id: attack.id,
-      });
+      ledger.push({ user_id: defenderOwnerId, delta: -cappedLoss, reason: 'defense_loss', ref_type: 'attack', ref_id: attack.id });
 
-      // Insurance payout if defender has an active policy.
       const { data: policy } = await supabase
         .from('insurance_policies')
         .select('*')
@@ -234,51 +177,24 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
       if (policy) {
-        const payout = Math.min(
-          Math.round(cappedLoss * policy.coverage),
-          policy.max_payout
-        );
-        await supabase.rpc('insert_ledger', {
-          p_user_id: defenderOwnerId,
-          p_delta: payout,
-          p_reason: 'insurance_payout',
-          p_ref_type: 'policy',
-          p_ref_id: policy.id,
-        });
-        await supabase
-          .from('insurance_policies')
-          .update({ claims_remaining: policy.claims_remaining - 1 })
-          .eq('id', policy.id);
+        const payout = Math.min(Math.round(cappedLoss * policy.coverage), policy.max_payout);
+        if (payout > 0) {
+          ledger.push({ user_id: defenderOwnerId, delta: payout, reason: 'insurance_payout', ref_type: 'policy', ref_id: policy.id });
+          insurancePolicyId = policy.id;
+          insuranceNewClaims = policy.claims_remaining - 1;
+        }
       }
     }
   } else {
-    // Loss / abandon: stake was already debited at start_attack.
-    // Defender gets a fee credit iff attack was against a real player.
+    // Loss / abandon: stake already debited at start_attack.
     if (!attack.is_bot_target && defenderOwnerId) {
-      await supabase.rpc('insert_ledger', {
-        p_user_id: defenderOwnerId,
-        p_delta: attack.stake,
-        p_reason: 'defense_fee',
-        p_ref_type: 'attack',
-        p_ref_id: attack.id,
-      });
+      ledger.push({ user_id: defenderOwnerId, delta: attack.stake, reason: 'defense_fee', ref_type: 'attack', ref_id: attack.id });
     } else {
-      await supabase.rpc('insert_ledger', {
-        p_user_id: null,
-        p_delta: attack.stake,
-        p_reason: 'platform_cut',
-        p_ref_type: 'attack',
-        p_ref_id: attack.id,
-      });
+      ledger.push({ user_id: null, delta: attack.stake, reason: 'platform_cut', ref_type: 'attack', ref_id: attack.id });
     }
   }
 
-  // ------- Creator royalties (Phase 3A) ---------------------------
-  // Any modules in the frozen loadout snapshot that were custom
-  // games — identified by a `customGameId` on the module — earn
-  // their creator a royalty. Paid out of the platform's slice on
-  // wins, and as a fixed defense-bonus on losses. See
-  // computeCreatorRoyalty for the split.
+  // ------- Creator royalties (Phase 3A; loss floor from P1) --------
   const customGameIds = Array.from(
     new Set(
       loadout.modules
@@ -288,18 +204,17 @@ serve(async (req) => {
   );
   let royaltyPaidPerCreator = 0;
   let royaltyPaidTotal = 0;
+  const playGameIds: string[] = [];
   if (customGameIds.length > 0) {
     const { data: games } = await supabase
       .from('custom_games')
       .select('id, creator_id, status')
       .in('id', customGameIds);
-    // Only pay royalties for games that were live at attack time.
+    const liveGames = (games ?? []).filter((g: { status: string }) => g.status === 'live');
+    for (const g of liveGames) playGameIds.push((g as { id: string }).id);
+
     const distinctCreators = Array.from(
-      new Set(
-        (games ?? [])
-          .filter((g: { status: string }) => g.status === 'live')
-          .map((g: { creator_id: string }) => g.creator_id)
-      )
+      new Set(liveGames.map((g: { creator_id: string }) => g.creator_id))
     );
     if (distinctCreators.length > 0) {
       const royalty = computeCreatorRoyalty({
@@ -308,59 +223,40 @@ serve(async (req) => {
         platformReceivesOnWin: platformReceives,
         distinctCreators: distinctCreators.length,
       });
-      royaltyPaidPerCreator = royalty.perCreator;
-      royaltyPaidTotal = royalty.totalRoyalty;
-
-      if (royalty.perCreator > 0) {
-        for (const creatorId of distinctCreators) {
-          if (creatorId === userId) continue; // don't pay attacker royalty on their own custom game
-          await supabase.rpc('insert_ledger', {
-            p_user_id: creatorId,
-            p_delta: royalty.perCreator,
-            p_reason: 'creator_royalty',
-            p_ref_type: 'attack',
-            p_ref_id: attack.id,
-          });
+      // Don't pay the attacker a royalty on their own equipped game.
+      const paidCreators = distinctCreators.filter((c) => c !== userId);
+      if (royalty.perCreator > 0 && paidCreators.length > 0) {
+        royaltyPaidPerCreator = royalty.perCreator;
+        royaltyPaidTotal = royalty.perCreator * paidCreators.length;
+        for (const creatorId of paidCreators) {
+          ledger.push({ user_id: creatorId, delta: royalty.perCreator, reason: 'creator_royalty', ref_type: 'attack', ref_id: attack.id });
         }
-        // Platform books: subtract the total royalty pool. Keeps
-        // the ledger balanced: on wins we already recorded a
-        // positive platform_cut for platformReceives; we now
-        // record a matching negative for the royalty pool. On
-        // losses (bot target) the platform recorded +stake; on a
-        // real-target loss the defender got the stake, so the
-        // royalty comes from platform anyway.
-        await supabase.rpc('insert_ledger', {
-          p_user_id: null,
-          p_delta: -royalty.totalRoyalty,
-          p_reason: 'creator_royalty',
-          p_ref_type: 'attack',
-          p_ref_id: attack.id,
-        });
-      }
-      // Bump plays counter on each involved game.
-      for (const g of games ?? []) {
-        if ((g as { status: string }).status === 'live') {
-          await supabase
-            .from('custom_games')
-            // deno-lint-ignore no-explicit-any
-            .update({ plays: ((g as any).plays ?? 0) + 1, updated_at: new Date().toISOString() })
-            .eq('id', (g as { id: string }).id);
-        }
+        // Platform funds the royalty pool (keeps the ledger balanced).
+        ledger.push({ user_id: null, delta: -royaltyPaidTotal, reason: 'creator_royalty', ref_type: 'attack', ref_id: attack.id });
       }
     }
   }
 
-  // Resolve.
-  await supabase
-    .from('attacks')
-    .update({ status, loot, platform_fee: platformFee, resolved_at: new Date().toISOString() })
-    .eq('id', attack.id);
-
-  const { data: newSafe } = await supabase
-    .from('safes')
-    .select('balance')
-    .eq('owner_id', userId)
-    .maybeSingle();
+  // ------- Atomic commit (P0.2) -----------------------------------
+  const { data: newBalance, error: settleErr } = await supabase.rpc('settle_attack', {
+    p_attack_id: attack.id,
+    p_status: status,
+    p_loot: loot,
+    p_platform_fee: platformFee,
+    p_result_rows: resultRows,
+    p_ledger: ledger,
+    p_play_game_ids: playGameIds,
+    p_insurance_policy_id: insurancePolicyId,
+    p_insurance_new_claims: insuranceNewClaims,
+  });
+  if (settleErr) {
+    // A concurrent submit resolved it first → return the resolved state.
+    if (settleErr.message?.includes('attack_not_pending')) {
+      const { data: fresh } = await supabase.from('attacks').select('*').eq('id', attack.id).maybeSingle();
+      if (fresh) return await resolvedPayload(supabase, fresh, userId);
+    }
+    return errorResponse('settlement_failed', 500, { detail: settleErr.message });
+  }
 
   return jsonResponse({
     attackId: attack.id,
@@ -368,8 +264,8 @@ serve(async (req) => {
     loot,
     platformFee,
     stake: attack.stake,
-    newBalance: newSafe?.balance ?? null,
-    modules: rows.map(r => ({
+    newBalance: newBalance ?? null,
+    modules: verified.rows.map((r) => ({
       moduleIndex: r.module_index,
       score: r.score,
       passed: r.passed,

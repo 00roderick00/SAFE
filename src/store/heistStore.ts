@@ -161,6 +161,9 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
       score: r.score,
       passed: r.passed,
       timeSpent: r.timeSpent,
+      // DSL modules ship their recorded input trace so the server can
+      // replay + verify the win (client passed/score is not trusted).
+      ...(r.inputTrace ? { inputTrace: r.inputTrace } : {}),
     }));
     return api.submitResult({ attackId: state.serverAttack.attackId, results });
   },

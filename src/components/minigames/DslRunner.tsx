@@ -119,6 +119,14 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
   const [inputDir, setInputDir] = useState<'up' | 'down' | 'left' | 'right' | 'idle'>('idle');
   const [now, setNow] = useState(0);
 
+  // Record the direction applied on each tick so the server can replay
+  // the run from the same seed and verify the outcome (anti-cheat). The
+  // ref is reset whenever a fresh game/seed mounts.
+  const traceRef = useRef<('up' | 'down' | 'left' | 'right' | 'idle')[]>([]);
+  useEffect(() => {
+    traceRef.current = [];
+  }, [game, seed]);
+
   // Keyboard input.
   useEffect(() => {
     if (!game) return;
@@ -137,6 +145,9 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
     if (!game || !state || state.status !== 'running') return;
     const id = setInterval(() => {
       setNow((n) => n + 1);
+      // Record the input applied on this tick (matches the direction the
+      // reducer below applies, since both read the same `inputDir`).
+      traceRef.current.push(inputDir);
       setState((prev) => {
         if (!prev || !game) return prev;
         const next: State = {
@@ -243,6 +254,7 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
       score,
       passed: won,
       timeSpent,
+      inputTrace: [...traceRef.current],
     });
   }, [state?.status]);
 

@@ -17,6 +17,11 @@ interface GameStore {
   notifications: GameNotification[];
   lastBotRefresh: number;
   recentlyAttacked: string[]; // bot IDs attacked recently
+  /** Where the current target list came from: 'server' = real
+   *  list_targets (real players + seeded bots), 'local' = client-only
+   *  fallback because the server fetch failed. null = not loaded yet.
+   *  Surfaced in the UI so a silent fallback is visible. */
+  targetsSource: 'server' | 'local' | null;
 
   // Actions
   refreshBotSafes: (playerRating: number) => void;
@@ -54,12 +59,14 @@ export const useGameStore = create<GameStore>()(
       notifications: [],
       lastBotRefresh: 0,
       recentlyAttacked: [],
+      targetsSource: null,
 
       refreshBotSafes: (playerRating) => {
         const safes = generateBotFeed(playerRating, 15);
         set({
           botSafes: safes,
           lastBotRefresh: Date.now(),
+          targetsSource: 'local',
         });
       },
 
@@ -82,13 +89,16 @@ export const useGameStore = create<GameStore>()(
             attackCooldownUntil: null,
             tagline: t.tagline ?? (t.isBot ? undefined : 'Live target'),
           }));
-          set({ botSafes, lastBotRefresh: Date.now() });
+          set({ botSafes, lastBotRefresh: Date.now(), targetsSource: 'server' });
         } catch (err) {
-          // Fall back to local bots when the server is unreachable.
+          // Fall back to local bots ONLY when the server is genuinely
+          // unreachable — and record that so the UI can surface it
+          // (real players carry the custom games, so a silent fallback
+          // hides the whole creator economy). See TESTING-FINDINGS-2 P1.
           // eslint-disable-next-line no-console
           console.warn('[targets] server refresh failed, using local bots', err);
           const safes = generateBotFeed(playerRating, count);
-          set({ botSafes: safes, lastBotRefresh: Date.now() });
+          set({ botSafes: safes, lastBotRefresh: Date.now(), targetsSource: 'local' });
         }
       },
 
