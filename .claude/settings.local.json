@@ -27,7 +27,12 @@
       "Bash(git remote:*)",
       "WebFetch(domain:00roderick00.github.io)",
       "Bash(grep:*)",
-      "Bash(vercel:*)"
+      "Bash(vercel:*)",
+      "Bash(npm run *)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)",
+      "Bash(awk '{$1=$1; print}')",
+      "Bash(npx eslint *)"
     ]
   }
 }
