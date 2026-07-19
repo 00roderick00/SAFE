@@ -3,19 +3,21 @@
 // reused anywhere a custom game gets equipped.
 
 import type { SecurityModule, ModuleType } from '../types';
-import type { PublicCustomGame } from '../services/api';
+import type { CustomGame } from '../services/api';
 import { sanitizeUserText } from '../utils/sanitize';
 
 /**
- * Build the SecurityModule a marketplace game occupies when equipped
- * into a given slot. The slot index is folded into the module id so
- * re-equipping the same game into the same slot is idempotent (stable
- * id → the server write is a pure overwrite, not an append).
+ * Build the SecurityModule a custom game occupies when equipped into a
+ * given slot. Accepts any CustomGame — a marketplace listing or one of
+ * the user's own live creations. The slot index is folded into the
+ * module id so re-equipping the same game into the same slot is
+ * idempotent (stable id → the server write is a pure overwrite, not an
+ * append).
  *
  * Display strings are sanitized here too, so a stored prompt-injection
  * or garbage title can't leak into the loadout an attacker later sees.
  */
-export function buildCustomModule(g: PublicCustomGame, slotIndex: number): SecurityModule {
+export function buildCustomModule(g: CustomGame, slotIndex: number): SecurityModule {
   const payload = g.mode === 'dsl_program' ? g.dsl_program : g.config;
   return {
     id: `${g.id}-slot-${slotIndex}`,

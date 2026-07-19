@@ -3,7 +3,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, TrendingUp, TrendingDown, Shield, ChevronRight } from 'lucide-react';
+import { ArrowLeft, TrendingUp, TrendingDown, Shield, ChevronRight, Sparkles, Store } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { calculateEconomyStats } from '../game/economy';
 import { MODULE_CONFIG } from '../game/constants';
@@ -137,6 +137,37 @@ export const SecurityScreen = () => {
           <p className="text-center text-text-dim text-xs mt-4">
             Tap a lock to change or test it
           </p>
+
+          {/* Custom-game entry points: build your own AI game or equip a
+              community one directly onto a slot. */}
+          <div className="grid grid-cols-2 gap-3 mt-5">
+            <button
+              onClick={() => {
+                haptics.light();
+                navigate('/custom-games');
+              }}
+              className="card-bordered p-3 flex flex-col items-start gap-1 hover:border-primary/50 transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <Sparkles size={16} className="text-primary" />
+              </div>
+              <span className="text-sm font-medium mt-1">Build a game</span>
+              <span className="text-xs text-text-dim">Design one with AI</span>
+            </button>
+            <button
+              onClick={() => {
+                haptics.light();
+                navigate('/marketplace');
+              }}
+              className="card-bordered p-3 flex flex-col items-start gap-1 hover:border-primary/50 transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-neon/10 flex items-center justify-center">
+                <Store size={16} className="text-neon" />
+              </div>
+              <span className="text-sm font-medium mt-1">Browse community games</span>
+              <span className="text-xs text-text-dim">Equip a live creation</span>
+            </button>
+          </div>
         </motion.div>
 
         {/* Stats Cards */}

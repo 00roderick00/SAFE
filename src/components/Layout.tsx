@@ -5,7 +5,7 @@ import {
   Vault,
   Crosshair,
   Shield,
-  ShieldCheck,
+  Gamepad2,
   History,
 } from 'lucide-react';
 interface LayoutProps {
@@ -15,8 +15,10 @@ interface LayoutProps {
 const navItems = [
   { path: '/', icon: Vault, label: 'Safe' },
   { path: '/security', icon: Shield, label: 'Security' },
-  { path: '/insurance', icon: ShieldCheck, label: 'Insure' },
   { path: '/heist', icon: Crosshair, label: 'Heist' },
+  // Entry point to the AI game builder + community marketplace, which
+  // were previously unreachable from the main app navigation.
+  { path: '/custom-games', icon: Gamepad2, label: 'Create' },
   { path: '/history', icon: History, label: 'History' },
 ];
 
