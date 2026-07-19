@@ -54,6 +54,7 @@ vi.mock('../components/minigames', () => ({
       <button onClick={() => onComplete({ moduleId, moduleType, score: .28, passed: false, timeSpent: 2_000 })}>Fail lock</button>
     </div>
   ),
+  preloadMiniGames: () => {},
 }));
 
 import { AttackScreen } from './AttackScreen';

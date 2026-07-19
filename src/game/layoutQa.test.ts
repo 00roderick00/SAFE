@@ -8,7 +8,8 @@ describe('responsive shell CSS contracts', () => {
     expect(css).toContain('bottom: calc(var(--safe-nav-height) + env(safe-area-inset-bottom));');
     expect(css).toContain('padding-bottom: calc(var(--safe-nav-height) + env(safe-area-inset-bottom));');
     expect(css).toContain('.app-canvas > div:has(.action-bar)');
-    expect(css).toContain('padding-bottom: calc(var(--safe-action-height) + 24px) !important;');
+    // Trailing padding must clear BOTH fixed layers (action bar + nav).
+    expect(css).toContain('padding-bottom: calc(var(--safe-action-height) + var(--safe-nav-height) + 32px) !important;');
   });
 
   it('accounts for every safe-area edge and retains 44px interaction targets', () => {

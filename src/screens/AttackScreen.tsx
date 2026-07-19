@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, ArrowLeft, LockKeyhole, Radio, Volume2, VolumeX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { BreachHud, GameIcon, VaultOutcome, type BreachRailLock } from '../components/game';
-import { MiniGameHost } from '../components/minigames';
+import { MiniGameHost, preloadMiniGames } from '../components/minigames';
 import { MODULE_CONFIG } from '../game/constants';
 import { calculateLootDistribution } from '../game/economy';
 import { getMiniGameBrief, getModuleDuration } from '../game/minigamePresentation';
@@ -66,6 +66,15 @@ export const AttackScreen = () => {
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Warm every lock's lazy chunk as soon as the attack mounts so the
+  // breach clock never ticks against "Loading lock mechanism…".
+  useEffect(() => {
+    const types = serverAttack
+      ? serverAttack.modules.map((m) => (m.baseEngine ?? m.moduleType))
+      : currentTarget?.securityLoadout.modules.map((m) => m.type) ?? [];
+    preloadMiniGames(types);
+  }, [serverAttack, currentTarget]);
 
   const modules = useMemo(() => {
     if (serverAttack) {
@@ -195,6 +204,23 @@ export const AttackScreen = () => {
       }
     }, 1_050);
   }, [recordModuleResult, nextModule, settleAttack]);
+
+  // Enforce the breach clock: when the shared timer runs out mid-attack,
+  // the current lock counts as held and the attack settles as a loss.
+  // Without this the HUD hit 0s while the minigame stayed playable forever.
+  useEffect(() => {
+    if (remainingTime > 0 || !attackStartedAt) return;
+    if (phase !== 'playing' && phase !== 'briefing') return;
+    if (!currentModule) return;
+    handleModuleComplete({
+      moduleId: currentModule.id,
+      moduleType: currentModule.type,
+      score: 0,
+      passed: false,
+      timeSpent: totalDuration * 1_000,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remainingTime, phase, attackStartedAt]);
 
   const handleCancel = useCallback(async () => {
     if (isServerAttack && !settlement) {

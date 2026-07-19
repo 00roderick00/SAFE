@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
@@ -257,7 +258,10 @@ export const HeistScreen = () => {
 
       <button className="exit-exposure-button" onClick={() => { exitHeistMode(); navigate('/'); }}>Exit exposure</button>
 
-      <AnimatePresence>
+      {/* Portaled to <body> so the fixed-position sheet is always anchored
+          to the viewport — a transformed/animating ancestor would otherwise
+          become its containing block and push the dialog below the fold. */}
+      {createPortal(<AnimatePresence>
         {selectedTarget && (() => {
           const payout = getPayoutPresentation(selectedTarget.safeBalance);
           return (
@@ -278,7 +282,7 @@ export const HeistScreen = () => {
             </motion.div>
           );
         })()}
-      </AnimatePresence>
+      </AnimatePresence>, document.body)}
     </div>
   );
 };

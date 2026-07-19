@@ -1140,7 +1140,9 @@ input:focus-visible,
 }
 
 .app-canvas > div:has(.action-bar) {
-  padding-bottom: calc(var(--safe-action-height) + 24px) !important;
+  /* Clear BOTH fixed bottom layers (action bar stacked above the nav)
+     so the last content row is never hidden behind them. */
+  padding-bottom: calc(var(--safe-action-height) + var(--safe-nav-height) + 32px) !important;
 }
 
 .game-icon {
@@ -1359,9 +1361,11 @@ input:focus-visible,
 
 .tactical-vault__readout {
   position: absolute;
-  z-index: 2;
+  z-index: 5;
   left: 50%;
-  bottom: 10.5%;
+  /* Sits above lock slot 3 (anchored at bottom 1%, ~50px tall) so the
+     balance digits are never covered by the lock badge. */
+  bottom: 21%;
   min-width: 128px;
   transform: translateX(-50%);
   display: flex;
@@ -1860,7 +1864,7 @@ input:focus-visible,
 .rich-game-grid { display: grid; grid-template-columns: 1fr; gap: 9px; margin-top: 11px; }.rich-game-card { position: relative; min-height: 146px; padding: 10px; border: 1px solid var(--color-border); background: var(--safe-metal-1); }.rich-game-card.selected { border: 2px solid var(--safe-secure); background: linear-gradient(135deg, rgba(216,255,69,.07), transparent 45%), var(--safe-metal-1); }.rich-game-card__select { width: calc(100% - 38px); min-height: 75px; display: grid; grid-template-columns: 58px 1fr; align-items: center; gap: 9px; color: var(--color-text); background: transparent; text-align: left; }.rich-game-card__select .game-emblem { width: 54px; height: 54px; color: var(--safe-secure); }.rich-game-card__copy { min-width: 0; }.rich-game-card__copy h3 { margin: 1px 0 2px; font-family: var(--font-display); font-size: 15px; font-weight: 900; text-transform: uppercase; }.rich-game-card__copy p { margin: 0; color: var(--color-text-dim); font-size: 9px; line-height: 1.3; }.favorite-button { position: absolute; top: 9px; right: 8px; width: 44px; height: 44px; display: grid; place-items: center; color: var(--color-text-dim); background: transparent; }.favorite-button[aria-pressed='true'] { color: var(--safe-danger); }.game-card-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top: 5px; }.game-card-meta span { padding: 4px 5px; overflow: hidden; color: var(--color-text-dim); border: 1px solid var(--color-border); font-size: 7px; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }.game-card-states { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 4px; }.recent-tag { display: inline-flex; align-items: center; padding: 3px 6px; color: var(--color-text-dim); border: 1px solid var(--color-border); font-size: 8px; font-weight: 800; text-transform: uppercase; }.catalog-empty { grid-column: 1 / -1; min-height: 130px; }
 
 @media (min-width: 700px) {
-  .defense-screen { padding-inline: 28px; }.defense-screen > main { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }.defense-summary, .defense-mix { grid-column: span 1; }.defense-lock-list, .defense-tools, .insurance-link { grid-column: 1 / -1; }.equipped-lock { grid-template-columns: 29px 56px 1fr 200px; grid-template-rows: 1fr; min-height: 115px; }.equipped-lock__index { grid-row: 1; }.equipped-lock__actions { grid-column: 4; grid-row: 1; grid-template-columns: 1fr 1.2fr 44px 44px; align-self: center; }.defense-tools > button { min-height: 90px; }
+  .defense-screen { padding-inline: 28px; }.defense-screen > main { display: grid; grid-template-columns: 1fr 1fr; align-items: start; }.defense-summary, .defense-mix { grid-column: span 1; }.defense-lock-list, .defense-tools, .insurance-link { grid-column: 1 / -1; }.equipped-lock { grid-template-columns: 29px 56px 1fr 258px; grid-template-rows: 1fr; min-height: 115px; }.equipped-lock__index { grid-row: 1; }.equipped-lock__actions { grid-column: 4; grid-row: 1; grid-template-columns: 1fr 1.2fr 44px 44px; align-self: center; }.defense-tools > button { min-height: 90px; }
   .picker-config { grid-template-columns: 1fr 1.35fr 190px; align-items: center; top: 0; padding-inline: 20px; }.picker-config__details { grid-template-columns: .9fr 1.1fr; align-items: center; }.picker-config__actions { grid-template-columns: 1fr; }.picker-config__actions button { min-height: 44px; }.game-catalog { padding: 18px 20px; }.catalog-tools { flex-direction: row; align-items: center; }.catalog-search { width: 230px; flex: none; }.catalog-tabs { flex: 1; }.rich-game-grid { grid-template-columns: 1fr 1fr; }
 }
 
