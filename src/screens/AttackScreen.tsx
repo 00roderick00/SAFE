@@ -1,29 +1,46 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { AlertTriangle, ArrowLeft, LockKeyhole, Radio, Volume2, VolumeX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, XCircle, ChevronRight, Coins, ArrowLeft } from 'lucide-react';
-import { Card, Button, ProgressBar } from '../components/ui';
+import { BreachHud, GameIcon, VaultOutcome, type BreachRailLock } from '../components/game';
 import { MiniGameHost } from '../components/minigames';
-
-import { usePlayerStore } from '../store/playerStore';
-import { useHeistStore } from '../store/heistStore';
-import { useGameStore } from '../store/gameStore';
-import { MiniGameResult } from '../types';
-import { ECONOMY } from '../game/constants';
+import { MODULE_CONFIG } from '../game/constants';
+import { calculateLootDistribution } from '../game/economy';
+import { getMiniGameBrief, getModuleDuration } from '../game/minigamePresentation';
+import { getPayoutPresentation } from '../game/presentation';
 import { api } from '../services/api';
 import { supabase } from '../services/supabaseClient';
+import { useGameStore } from '../store/gameStore';
+import { useHeistStore } from '../store/heistStore';
+import { usePlayerStore } from '../store/playerStore';
+import type { MiniGameResult, ModuleType } from '../types';
+import { gameAudio } from '../utils/gameFeedback';
+import { haptics } from '../utils/haptics';
 
-type Phase = 'ready' | 'playing' | 'result' | 'complete';
+type Phase = 'briefing' | 'playing' | 'feedback' | 'settling' | 'outcome';
+
+interface SettlementView {
+  success: boolean;
+  stake: number;
+  grossLoot: number;
+  platformFee: number;
+  netLoot: number;
+}
+
+const seenBriefings = new Set<ModuleType>();
 
 export const AttackScreen = () => {
   const navigate = useNavigate();
-  const [phase, setPhase] = useState<Phase>('ready');
-  const [countdown, setCountdown] = useState(3);
-
+  const [phase, setPhase] = useState<Phase>('briefing');
+  const [now, setNow] = useState(() => Date.now());
+  const [soundEnabled, setSoundEnabled] = useState(() => gameAudio.isEnabled());
+  const [settlement, setSettlement] = useState<SettlementView | null>(null);
+  const settlingRef = useRef(false);
   const {
     currentTarget,
     currentModuleIndex,
     moduleResults,
+    attackStartedAt,
     stakePaid,
     serverAttack,
     recordModuleResult,
@@ -34,418 +51,272 @@ export const AttackScreen = () => {
     getCurrentModule,
     getProgress,
   } = useHeistStore();
-
   const { addEarnings, recordSuccessfulHeist, updateRiskRating } = usePlayerStore();
   const { addAttackResult, addNotification, updateBotCooldown } = useGameStore();
-
   const currentModule = getCurrentModule();
   const progress = getProgress();
+  const targetName = serverAttack?.defenderHandle ?? currentTarget?.ownerName ?? 'Target';
   const isServerAttack = Boolean(serverAttack);
-  const targetName = serverAttack?.defenderHandle ?? currentTarget?.ownerName ?? 'target';
 
-  // Redirect if no attack in progress
   useEffect(() => {
-    if (!currentTarget && !serverAttack) {
-      navigate('/heist');
-    }
+    if (!currentTarget && !serverAttack) navigate('/heist');
   }, [currentTarget, serverAttack, navigate]);
 
-  // Countdown before starting
   useEffect(() => {
-    if (phase !== 'ready') return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
-      return () => clearTimeout(timer);
-    } else {
-      setPhase('playing');
+  const modules = useMemo(() => {
+    if (serverAttack) {
+      return serverAttack.modules.map((module) => {
+        const type = (module.baseEngine ?? module.moduleType) as ModuleType;
+        const config = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG];
+        return { id: `${serverAttack.attackId}-${module.index}`, type, name: config?.name ?? module.moduleType };
+      });
     }
-  }, [phase, countdown]);
+    return (currentTarget?.securityLoadout.modules ?? []).map((module) => ({ id: module.id, type: module.type, name: module.name }));
+  }, [serverAttack, currentTarget]);
 
-  const handleModuleComplete = useCallback(
-    (result: MiniGameResult) => {
-      recordModuleResult(result);
-      setPhase('result');
+  const payout = useMemo(() => {
+    if (serverAttack) {
+      const split = calculateLootDistribution(serverAttack.potentialLoot);
+      return { grossLoot: serverAttack.potentialLoot, platformCut: split.platformReceives, netPayout: split.attackerReceives };
+    }
+    return getPayoutPresentation(currentTarget?.safeBalance ?? 0);
+  }, [serverAttack, currentTarget]);
 
-      // After showing result, check if passed
-      setTimeout(() => {
-        if (!result.passed) {
-          // Failed this lock - heist ends immediately
-          setPhase('complete');
-        } else {
-          // Passed - move to next module or complete if all done
-          const hasMore = nextModule();
-          if (hasMore) {
-            setPhase('ready');
-            setCountdown(2); // Shorter countdown between modules
-          } else {
-            setPhase('complete');
-          }
-        }
-      }, 1500);
-    },
-    [recordModuleResult, nextModule]
-  );
+  const totalDuration = modules.reduce((total, module) => total + getModuleDuration(module.type), 0);
+  const elapsed = attackStartedAt ? Math.floor((now - attackStartedAt) / 1_000) : 0;
+  const remainingTime = Math.max(0, totalDuration - elapsed);
+  const passedCount = moduleResults.filter((result) => result.passed).length;
+  const failedIndex = moduleResults.findIndex((result) => !result.passed);
+  const overallProgress = settlement?.success
+    ? 100
+    : Math.round((passedCount / Math.max(1, progress.total)) * 100);
 
-  /**
-   * Ensure the client's cached balance matches the server truth
-   * after any state-mutating call. Payload's newBalance is trusted
-   * first; we fall back to a fresh safe row read in case the server
-   * couldn't include it.
-   */
+  const railLocks: BreachRailLock[] = modules.map((module, index) => {
+    const result = moduleResults[index];
+    const status = result
+      ? result.passed ? 'cracked' : 'failed'
+      : index === currentModuleIndex && phase !== 'outcome' ? 'active' : 'pending';
+    return { ...module, status };
+  });
+
   const rehydrateBalance = useCallback(async (newBalance: number | null | undefined) => {
     if (typeof newBalance === 'number') {
       usePlayerStore.setState({ safeBalance: newBalance });
       return;
     }
-    const { data: sess } = await supabase.auth.getUser();
-    const userId = sess.user?.id;
-    if (!userId) return;
-    const safe = await api.getSafe(userId);
+    const { data } = await supabase.auth.getUser();
+    if (!data.user?.id) return;
+    const safe = await api.getSafe(data.user.id);
     if (safe) usePlayerStore.setState({ safeBalance: safe.balance });
   }, []);
 
-  const handleComplete = useCallback(async () => {
+  const settleAttack = useCallback(async () => {
+    if (settlingRef.current) return;
+    settlingRef.current = true;
+    setPhase('settling');
     if (isServerAttack) {
       try {
         const payload = await completeServerAttack();
-        if (!payload) {
-          navigate('/heist');
-          return;
-        }
+        if (!payload) throw new Error('No settlement returned.');
         await rehydrateBalance(payload.newBalance);
-        if (payload.status === 'won') {
+        const success = payload.status === 'won';
+        const netLoot = success ? payload.loot - payload.platformFee : 0;
+        if (success) {
           recordSuccessfulHeist();
           updateRiskRating(15);
-          addNotification({
-            type: 'attack_success',
-            title: 'Heist Successful!',
-            message: `You stole ${payload.loot - payload.platformFee} tokens from ${targetName}!`,
-          });
+          addNotification({ type: 'attack_success', title: 'Full breach', message: `${netLoot} net tokens received from ${targetName}.` });
+          haptics.success();
+          gameAudio.play('breach');
         } else {
           updateRiskRating(-10);
-          addNotification({
-            type: 'attack_fail',
-            title: 'Heist Failed',
-            message: `You lost ${payload.stake} tokens attacking ${targetName}.`,
-          });
+          addNotification({ type: 'attack_fail', title: 'Heist failed', message: `${payload.stake} token stake lost against ${targetName}.` });
+          haptics.error();
+          gameAudio.play('fail');
         }
-      } catch (err) {
-        addNotification({
-          type: 'attack_fail',
-          title: 'Attack rejected',
-          message: err instanceof Error ? err.message : 'Server refused this attack.',
-        });
+        setSettlement({ success, stake: payload.stake, grossLoot: payload.loot, platformFee: payload.platformFee, netLoot });
+      } catch (error) {
+        addNotification({ type: 'attack_fail', title: 'Settlement rejected', message: error instanceof Error ? error.message : 'Server refused this result.' });
+        setSettlement({ success: false, stake: stakePaid, grossLoot: 0, platformFee: 0, netLoot: 0 });
       }
-      resetHeist();
-      navigate('/heist');
+      setPhase('outcome');
       return;
     }
 
-    // Legacy client-computed path (used when Supabase isn't configured
-    // or for local dev / smoke tests).
     const result = completeAttack();
     if (!result) {
-      navigate('/heist');
+      setSettlement({ success: false, stake: stakePaid, grossLoot: 0, platformFee: 0, netLoot: 0 });
+      setPhase('outcome');
       return;
     }
-
     addAttackResult(result);
     updateBotCooldown(result.targetId);
-
     if (result.success) {
       addEarnings(result.lootGained);
       recordSuccessfulHeist();
       updateRiskRating(15);
-      addNotification({
-        type: 'attack_success',
-        title: 'Heist Successful!',
-        message: `You stole ${result.lootGained} tokens from ${result.targetName}!`,
-      });
+      addNotification({ type: 'attack_success', title: 'Full breach', message: `${result.lootGained} net tokens received from ${result.targetName}.` });
+      haptics.success();
+      gameAudio.play('breach');
     } else {
       updateRiskRating(-10);
-      addNotification({
-        type: 'attack_fail',
-        title: 'Heist Failed',
-        message: `You lost ${stakePaid} tokens attacking ${result.targetName}.`,
-      });
+      addNotification({ type: 'attack_fail', title: 'Heist failed', message: `${stakePaid} token stake lost against ${result.targetName}.` });
+      haptics.error();
+      gameAudio.play('fail');
     }
+    setSettlement({ success: result.success, stake: result.stakePaid, grossLoot: result.success ? result.lootGained + result.platformFee : 0, platformFee: result.platformFee, netLoot: result.lootGained });
+    setPhase('outcome');
+  }, [isServerAttack, completeServerAttack, rehydrateBalance, recordSuccessfulHeist, updateRiskRating, addNotification, targetName, stakePaid, completeAttack, addAttackResult, updateBotCooldown, addEarnings]);
 
-    resetHeist();
-    navigate('/heist');
-  }, [
-    isServerAttack,
-    completeServerAttack,
-    completeAttack,
-    addAttackResult,
-    updateBotCooldown,
-    addEarnings,
-    recordSuccessfulHeist,
-    updateRiskRating,
-    addNotification,
-    stakePaid,
-    resetHeist,
-    navigate,
-    targetName,
-    rehydrateBalance,
-  ]);
+  const handleModuleComplete = useCallback((result: MiniGameResult) => {
+    recordModuleResult(result);
+    setPhase('feedback');
+    if (result.passed) {
+      haptics.success();
+      gameAudio.play('crack');
+    } else {
+      haptics.error();
+      gameAudio.play('fail');
+    }
+    window.setTimeout(() => {
+      if (!result.passed) {
+        void settleAttack();
+        return;
+      }
+      const hasMore = nextModule();
+      if (hasMore) {
+        setPhase('briefing');
+        gameAudio.play('ready');
+      } else {
+        void settleAttack();
+      }
+    }, 1_050);
+  }, [recordModuleResult, nextModule, settleAttack]);
 
   const handleCancel = useCallback(async () => {
-    // Abandoning still costs the stake, so we resolve the attack
-    // server-side (submits whatever module results we have so far;
-    // the server pads the rest as failed and marks it 'lost'). Then
-    // refresh the balance from the server so the UI is truthful.
-    if (isServerAttack) {
+    if (isServerAttack && !settlement) {
       try {
         const payload = await completeServerAttack();
         if (payload) await rehydrateBalance(payload.newBalance);
-      } catch (err) {
-        // Non-fatal — leave the pending attack in place; the hydrate
-        // cleanup on next login will resolve it. Don't spam the user
-        // with a modal here.
-        // eslint-disable-next-line no-console
-        console.warn('[cancel] submit_result failed', err);
+      } catch (error) {
+        console.warn('[cancel] settlement failed', error);
       }
     }
     resetHeist();
     navigate('/heist');
-  }, [isServerAttack, completeServerAttack, rehydrateBalance, resetHeist, navigate]);
+  }, [isServerAttack, settlement, completeServerAttack, rehydrateBalance, resetHeist, navigate]);
 
   const seed = useMemo(() => {
-    // Prefer the server-provided seed (deterministic + verifiable).
-    if (currentModule && 'seed' in currentModule && currentModule.seed) {
-      return currentModule.seed;
-    }
-    if (currentTarget && currentModule) {
-      return `${currentTarget.id}:${currentModule.id}:${currentModuleIndex}`;
-    }
+    if (currentModule?.seed) return currentModule.seed;
+    if (currentTarget && currentModule) return `${currentTarget.id}:${currentModule.id}:${currentModuleIndex}`;
     return '';
   }, [currentTarget, currentModule, currentModuleIndex]);
 
-  if ((!currentTarget && !serverAttack) || !currentModule) {
-    return null;
-  }
-
+  if ((!currentTarget && !serverAttack) || !currentModule) return null;
+  const moduleType = currentModule.type as ModuleType;
+  const brief = getMiniGameBrief(moduleType);
+  const seen = seenBriefings.has(moduleType);
   const lastResult = moduleResults[moduleResults.length - 1];
-  const passedCount = moduleResults.filter((r) => r.passed).length;
+
+  const startLock = () => {
+    seenBriefings.add(moduleType);
+    gameAudio.play('tick');
+    setPhase('playing');
+  };
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    gameAudio.setEnabled(next);
+  };
+  const leaveOutcome = () => {
+    resetHeist();
+    navigate('/heist');
+  };
 
   return (
-    <div className="min-h-screen bg-background grid-bg flex flex-col">
-      {/* Header */}
-      <header className="px-4 py-4 flex items-center justify-between border-b border-primary/10">
-        <button
-          onClick={handleCancel}
-          className="p-2 text-text-dim hover:text-text"
-        >
-          <ArrowLeft size={24} />
-        </button>
-        <div className="text-center">
-          <p className="text-sm text-text-dim">Attacking</p>
-          <p className="font-display font-semibold text-text">
-            {targetName}
-          </p>
-        </div>
-        <div className="w-10" /> {/* Spacer */}
+    <div className="breach-screen">
+      <header className="breach-topbar">
+        <button className="icon-button" onClick={handleCancel} aria-label="Abandon attack and lose the committed stake"><ArrowLeft size={20} /></button>
+        <div><span className="eyebrow">LIVE BREACH</span><strong>{targetName}</strong></div>
+        <button className="icon-button" onClick={toggleSound} aria-label={soundEnabled ? 'Mute game sound' : 'Enable game sound'} aria-pressed={soundEnabled}>{soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}</button>
       </header>
 
-      {/* Progress */}
-      <div className="px-4 py-3 bg-surface/50">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-text-dim">
-            Lock {progress.current} of {progress.total}
-          </span>
-          <span className="text-sm font-display text-primary">
-            {passedCount}/{moduleResults.length} passed
-          </span>
-        </div>
-        <ProgressBar
-          value={(progress.current - 1) / progress.total * 100 + (phase === 'result' ? 100 / progress.total : 0)}
-          variant="primary"
-          size="sm"
-        />
-      </div>
+      <BreachHud
+        target={targetName}
+        stake={stakePaid}
+        netLoot={payout.netPayout}
+        current={progress.current}
+        total={progress.total}
+        timeLeft={remainingTime}
+        progress={overallProgress}
+        locks={railLocks}
+      />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+      <main className="breach-stage">
         <AnimatePresence mode="wait">
-          {/* Countdown */}
-          {phase === 'ready' && (
-            <motion.div
-              key="countdown"
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.5 }}
-              className="text-center"
-            >
-              <p className="text-lg text-text-dim mb-4">
-                {currentModule.name}
-              </p>
-              <motion.span
-                key={countdown}
-                initial={{ scale: 1.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="font-display text-8xl font-bold text-primary neon-text-primary"
-              >
-                {countdown}
-              </motion.span>
-            </motion.div>
+          {phase === 'briefing' && (
+            <motion.section key={`brief-${currentModuleIndex}`} className="lock-brief" initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <div className="lock-brief__emblem"><GameIcon type={moduleType} size={42} /><span>{progress.current}</span></div>
+              <p className="eyebrow">LOCK {progress.current} / {progress.total}</p>
+              <h1>{brief.name}</h1>
+              <dl><div><dt>Objective</dt><dd>{brief.objective}</dd></div><div><dt>Pass requirement</dt><dd>{brief.passRequirement}</dd></div><div><dt>Controls</dt><dd>{brief.controls}</dd></div></dl>
+              <button className="btn-danger lock-brief__start" onClick={startLock}><Radio size={18} /> {seen ? 'Skip briefing & start' : 'Begin lock'}</button>
+            </motion.section>
           )}
 
-          {/* Mini-game */}
           {phase === 'playing' && (
-            <motion.div
-              key="game"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="w-full max-w-sm"
-            >
-              <MiniGameHost
-                key={seed}
-                moduleType={currentModule.type as import('../types').ModuleType}
-                moduleId={currentModule.id}
-                difficulty={currentModule.difficulty}
-                seed={seed}
-                config={currentModule.customConfig?.config}
-                mode={currentModule.customConfig?.mode}
-                onComplete={handleModuleComplete}
-                onFail={handleModuleComplete}
-              />
-            </motion.div>
+            <motion.section key={`game-${seed}`} className="minigame-bay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} aria-label={`${brief.name} playfield`}>
+              <div className="minigame-bay__label"><span>{brief.name}</span><span>Goal: {brief.passRequirement}</span></div>
+              <div className="minigame-bay__playfield">
+                <MiniGameHost
+                  key={seed}
+                  moduleType={moduleType}
+                  moduleId={currentModule.id}
+                  difficulty={currentModule.difficulty}
+                  seed={seed}
+                  config={currentModule.customConfig?.config}
+                  mode={currentModule.customConfig?.mode}
+                  onComplete={handleModuleComplete}
+                  onFail={handleModuleComplete}
+                />
+              </div>
+            </motion.section>
           )}
 
-          {/* Result */}
-          {phase === 'result' && lastResult && (
-            <motion.div
-              key="result"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              className="text-center"
-            >
-              {lastResult.passed ? (
-                <>
-                  <CheckCircle size={80} className="text-primary mx-auto mb-4" />
-                  <p className="font-display text-2xl font-bold text-primary neon-text-primary">
-                    Lock Cracked!
-                  </p>
-                  <p className="text-text-dim mt-2">
-                    Score: {Math.round(lastResult.score * 100)}%
-                  </p>
-                </>
-              ) : (
-                <>
-                  <XCircle size={80} className="text-danger mx-auto mb-4" />
-                  <p className="font-display text-2xl font-bold text-danger">
-                    Failed!
-                  </p>
-                  <p className="text-text-dim mt-2">
-                    Score: {Math.round(lastResult.score * 100)}%
-                  </p>
-                </>
-              )}
-            </motion.div>
+          {phase === 'feedback' && lastResult && (
+            <motion.section key="feedback" className={`lock-feedback lock-feedback--${lastResult.passed ? 'cracked' : 'failed'}`} initial={{ opacity: 0, scale: .88 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+              <div className="feedback-bolt" aria-hidden="true"><i /><i /><span /></div>
+              <GameIcon type={moduleType} size={38} />
+              <p className="eyebrow">LOCK {progress.current}</p>
+              <h2>{lastResult.passed ? 'Bolt retracted' : 'Bolt slammed shut'}</h2>
+              <p>{lastResult.passed ? `${brief.name} cracked · ${Math.round(lastResult.score * 100)}%` : `Breach stopped · ${Math.round(lastResult.score * 100)}% · stake will be lost`}</p>
+            </motion.section>
           )}
 
-          {/* Complete */}
-          {phase === 'complete' && (
-            <motion.div
-              key="complete"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="w-full max-w-sm text-center"
-            >
-              <Card variant="elevated" padding="lg">
-                {passedCount === progress.total ? (
-                  <>
-                    <CheckCircle
-                      size={64}
-                      className="text-primary mx-auto mb-4"
-                    />
-                    <h2 className="font-display text-2xl font-bold text-primary neon-text-primary mb-2">
-                      SAFE BREACHED!
-                    </h2>
-                    <p className="text-text-dim mb-4">
-                      You cracked all {progress.total} locks!
-                    </p>
+          {phase === 'settling' && (
+            <motion.section key="settling" className="settling-panel" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <ScanSettlement />
+              <p className="eyebrow">VERIFYING RUN</p><h2>Authoritative settlement</h2><p>Lock results are being verified before balances move.</p>
+            </motion.section>
+          )}
 
-                    <div className="flex items-center justify-center gap-2 text-2xl font-display font-bold text-primary mb-6">
-                      <Coins size={28} />
-                      <span>
-                        +
-                        {serverAttack
-                          ? Math.round(serverAttack.potentialLoot * (1 - ECONOMY.platformCut))
-                          : currentTarget
-                            ? Math.round(
-                                currentTarget.safeBalance *
-                                  ECONOMY.lootFraction *
-                                  (1 - ECONOMY.platformCut)
-                              )
-                            : 0}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <XCircle size={64} className="text-danger mx-auto mb-4" />
-                    <h2 className="font-display text-2xl font-bold text-danger mb-2">
-                      HEIST FAILED
-                    </h2>
-                    <p className="text-text-dim mb-4">
-                      Failed on lock {passedCount + 1} of {progress.total}
-                    </p>
-
-                    <div className="text-lg text-text-dim mb-6">
-                      <p className="mb-1">You must crack all locks to breach the safe!</p>
-                      <p className="text-danger">Lost: {stakePaid} tokens</p>
-                    </div>
-                  </>
-                )}
-
-                <Button
-                  variant="primary"
-                  fullWidth
-                  size="lg"
-                  onClick={handleComplete}
-                >
-                  Continue
-                  <ChevronRight size={20} className="ml-2" />
-                </Button>
-              </Card>
-            </motion.div>
+          {phase === 'outcome' && settlement && (
+            <motion.section key="outcome" className="outcome-panel" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }}>
+              <VaultOutcome success={settlement.success} target={targetName} stake={settlement.stake} grossLoot={settlement.grossLoot} platformFee={settlement.platformFee} netLoot={settlement.netLoot} />
+              <button className={settlement.success ? 'btn-neon outcome-continue' : 'btn-danger outcome-continue'} onClick={leaveOutcome}>{settlement.success ? 'Secure reward & find next target' : 'Acknowledge loss'}</button>
+            </motion.section>
           )}
         </AnimatePresence>
-      </div>
+      </main>
 
-      {/* Module results strip */}
-      {moduleResults.length > 0 && phase !== 'complete' && (
-        <div className="px-4 py-3 bg-surface/50 border-t border-primary/10">
-          <div className="flex gap-2 justify-center">
-            {moduleResults.map((result, i) => (
-              <div
-                key={i}
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  result.passed ? 'bg-primary/20' : 'bg-danger/20'
-                }`}
-              >
-                {result.passed ? (
-                  <CheckCircle size={18} className="text-primary" />
-                ) : (
-                  <XCircle size={18} className="text-danger" />
-                )}
-              </div>
-            ))}
-            {Array.from({
-              length: progress.total - moduleResults.length,
-            }).map((_, i) => (
-              <div
-                key={`pending-${i}`}
-                className="w-8 h-8 rounded-full bg-surface-light border border-primary/20"
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {failedIndex >= 0 && phase !== 'outcome' && <div className="breach-consequence"><AlertTriangle size={15} /> Lock {failedIndex + 1} held. Settling stake loss.</div>}
     </div>
   );
 };
+
+const ScanSettlement = () => (
+  <div className="settlement-scanner" aria-hidden="true"><LockKeyhole size={36} /><i /><i /><i /></div>
+);

@@ -1,358 +1,242 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  ArrowLeft,
+  Clock3,
+  Gamepad2,
+  Heart,
+  Play,
+  Save,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Store,
+  X,
+} from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, Check, X, Sparkles, Store } from 'lucide-react';
-import { usePlayerStore } from '../store/playerStore';
-import { MODULE_CONFIG, MODULE_CATEGORIES } from '../game/constants';
-import { getModulesByCategory } from '../game/modules';
-import { ModuleType } from '../types';
+import { GameEmblem, StateBadge } from '../components/game';
 import { MiniGameHost } from '../components/minigames';
-import { api, type CustomGame } from '../services/api';
-import { useSession } from '../services/useSession';
-import { supabase } from '../services/supabaseClient';
+import { getCatalogMeta } from '../game/catalog';
+import { ALL_MODULE_TYPES, MODULE_CONFIG } from '../game/constants';
+import { calculateModuleStrength } from '../game/economy';
 import { buildCustomModule } from '../game/loadout';
+import { api, type CustomGame } from '../services/api';
+import { supabase } from '../services/supabaseClient';
+import { useSession } from '../services/useSession';
+import { usePlayerStore } from '../store/playerStore';
+import type { ModuleType, SecurityModule } from '../types';
 import { sanitizeUserText } from '../utils/sanitize';
+
+type PickerTab = 'arcade' | 'puzzle' | 'classic' | 'community' | 'recent' | 'favorites';
+const TABS: { id: PickerTab; label: string }[] = [
+  { id: 'arcade', label: 'Arcade' },
+  { id: 'puzzle', label: 'Puzzle' },
+  { id: 'classic', label: 'Locks' },
+  { id: 'community', label: 'Community' },
+  { id: 'recent', label: 'Recent' },
+  { id: 'favorites', label: 'Favorites' },
+];
+
+const getDifficultyLabel = (value: number) => value < .33 ? 'Easy' : value < .66 ? 'Tactical' : 'Punishing';
 
 export const GamePickerScreen = () => {
   const navigate = useNavigate();
   const session = useSession();
   const { slotIndex } = useParams<{ slotIndex: string }>();
-  const index = parseInt(slotIndex || '0', 10);
-
+  const index = Number.parseInt(slotIndex || '0', 10);
   const { securityLoadout, setModuleType, setModuleDifficulty } = usePlayerStore();
   const currentModule = securityLoadout.modules[index];
-
-  const [selectedType, setSelectedType] = useState<ModuleType>(currentModule?.type || 'pacman');
-  const [difficulty, setDifficulty] = useState(currentModule?.difficulty || 0.5);
-  // When set, the user is equipping a live custom/community game rather
-  // than a built-in module.
+  const [selectedType, setSelectedType] = useState<ModuleType>(currentModule?.type || 'pattern');
   const [selectedCustom, setSelectedCustom] = useState<CustomGame | null>(null);
+  const [difficulty, setDifficulty] = useState(currentModule?.difficulty ?? .5);
+  const [activeTab, setActiveTab] = useState<PickerTab>('community');
+  const [search, setSearch] = useState('');
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
+  const [recent, setRecent] = useState<ModuleType[]>(() => securityLoadout.modules.map((module) => module.type));
+  const [customGames, setCustomGames] = useState<CustomGame[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const modulesByCategory = getModulesByCategory();
-
-  // Live custom games the user can equip: their own live creations +
-  // the community marketplace, de-duped by id.
-  const [customGames, setCustomGames] = useState<CustomGame[]>([]);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const market = await api.listMarketplaceGames(30);
-        let own: CustomGame[] = [];
-        if (session?.user?.id) {
-          own = (await api.listOwnCustomGames(session.user.id)).filter((g) => g.status === 'live');
-        }
-        const byId = new Map<string, CustomGame>();
-        for (const g of [...own, ...market]) if (!byId.has(g.id)) byId.set(g.id, g);
-        if (!cancelled) setCustomGames([...byId.values()]);
+        const own = session?.user?.id ? (await api.listOwnCustomGames(session.user.id)).filter((game) => game.status === 'live') : [];
+        const unique = new Map<string, CustomGame>();
+        for (const game of [...own, ...market]) unique.set(game.id, game);
+        if (!cancelled) setCustomGames([...unique.values()]);
       } catch {
-        // Section just stays empty if the fetch fails (offline/dev).
+        if (!cancelled) setCustomGames([]);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [session?.user?.id]);
 
-  const handleSelectGame = (type: ModuleType) => {
+  const selectedConfig = MODULE_CONFIG[selectedType as keyof typeof MODULE_CONFIG];
+  const selectedMeta = getCatalogMeta(selectedType);
+  const selectedName = selectedCustom ? sanitizeUserText(selectedCustom.name, { maxLength: 60 }) : selectedConfig.name;
+  const selectedDescription = selectedCustom ? sanitizeUserText(selectedCustom.description, { maxLength: 200 }) : selectedConfig.description;
+  const selectedDifficulty = selectedCustom?.calibrated_difficulty ?? difficulty;
+  const selectedModule: SecurityModule = selectedCustom
+    ? buildCustomModule(selectedCustom, index)
+    : {
+        id: currentModule?.id ?? `preview-${index}`,
+        type: selectedType,
+        difficulty,
+        weight: selectedConfig.baseWeight,
+        name: selectedConfig.name,
+        description: selectedConfig.description,
+      };
+  const securityContribution = Math.round(calculateModuleStrength(selectedModule) * 10);
+  const attackerExperience = selectedDifficulty < .33
+    ? 'Forgiving timing and a clear objective.'
+    : selectedDifficulty < .66
+      ? 'Tighter timing with moderate cognitive load.'
+      : 'Little recovery time and a demanding pass condition.';
+
+  const builtInGames = useMemo(() => ALL_MODULE_TYPES.filter((type) => {
+    const config = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG];
+    const matchesSearch = `${config.name} ${config.description}`.toLowerCase().includes(search.trim().toLowerCase());
+    if (!matchesSearch) return false;
+    if (activeTab === 'recent') return recent.includes(type);
+    if (activeTab === 'favorites') return favorites.has(type);
+    return config.category === activeTab;
+  }), [activeTab, favorites, recent, search]);
+
+  const visibleCustomGames = useMemo(() => customGames.filter((game) => {
+    const matchesSearch = `${game.name} ${game.description}`.toLowerCase().includes(search.trim().toLowerCase());
+    return matchesSearch && (activeTab === 'community' || (activeTab === 'favorites' && favorites.has(game.id)));
+  }), [activeTab, customGames, favorites, search]);
+
+  const selectBuiltIn = (type: ModuleType) => {
     setSelectedType(type);
     setSelectedCustom(null);
+    setRecent((items) => [type, ...items.filter((item) => item !== type)].slice(0, 8));
   };
-
-  const handleSelectCustom = (game: CustomGame) => {
+  const selectCustom = (game: CustomGame) => {
     setSelectedCustom(game);
+    setSelectedType(game.base_engine as ModuleType);
   };
+  const toggleFavorite = (id: string) => setFavorites((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
-  const handleTryGame = () => {
-    setIsPlaying(true);
-  };
-
-  const handleGameComplete = () => {
-    setIsPlaying(false);
-  };
-
-  const handleConfirm = async () => {
-    if (selectedCustom) {
-      // Equip the custom game onto this slot (sanitized + server-shaped).
-      usePlayerStore.getState().updateSecurityModule(index, buildCustomModule(selectedCustom, index));
-    } else {
+  const handleSave = async () => {
+    if (selectedCustom) usePlayerStore.getState().updateSecurityModule(index, buildCustomModule(selectedCustom, index));
+    else {
       setModuleType(index, selectedType);
       setModuleDifficulty(index, difficulty);
     }
-    // Persist the whole loadout to the server so the safe's defense
-    // reflects this change (attackers see the server loadout). Best
-    // effort — the local store is already updated for dev/offline.
     setSaving(true);
     try {
-      const {
-        data: { session: s },
-      } = await supabase.auth.getSession();
-      if (s) {
-        await api.updateLoadout(s.user.id, usePlayerStore.getState().securityLoadout);
-      }
+      const { data } = await supabase.auth.getSession();
+      if (data.session) await api.updateLoadout(data.session.user.id, usePlayerStore.getState().securityLoadout);
     } catch {
-      // ignore — local store already reflects the change
+      // Local configuration remains valid for offline practice.
     } finally {
       setSaving(false);
     }
     navigate('/security');
   };
 
-  const selectedConfig = MODULE_CONFIG[selectedType as keyof typeof MODULE_CONFIG];
-
-  const previewName = selectedCustom ? sanitizeUserText(selectedCustom.name, { maxLength: 60 }) : selectedConfig?.name;
-  const previewIcon = selectedCustom ? '✨' : selectedConfig?.icon;
-  const previewDesc = selectedCustom
-    ? sanitizeUserText(selectedCustom.description, { maxLength: 200 })
-    : selectedConfig?.description;
-
-  const renderGamePreview = () => {
-    if (!isPlaying) return null;
-    if (selectedCustom) {
-      const isDsl = selectedCustom.mode === 'dsl_program';
-      return (
-        <MiniGameHost
-          moduleType={selectedCustom.base_engine as ModuleType}
-          moduleId={`preview-${selectedCustom.id}`}
-          difficulty={selectedCustom.calibrated_difficulty ?? 0.5}
-          seed={`preview-${selectedCustom.id}`}
-          config={isDsl ? selectedCustom.dsl_program : selectedCustom.config}
-          mode={selectedCustom.mode}
-          onComplete={handleGameComplete}
-          onFail={handleGameComplete}
-        />
-      );
-    }
-    return (
-      <MiniGameHost
-        moduleType={selectedType}
-        moduleId={`preview-${selectedType}`}
-        difficulty={difficulty}
-        seed={`preview-${selectedType}`}
-        onComplete={handleGameComplete}
-        onFail={handleGameComplete}
-      />
-    );
-  };
-
-  // Order categories: arcade, puzzle, classic
-  const categoryOrder = ['arcade', 'puzzle', 'classic'];
+  const previewType = (selectedCustom?.base_engine ?? selectedType) as ModuleType;
+  const previewConfig = selectedCustom ? (selectedCustom.mode === 'dsl_program' ? selectedCustom.dsl_program : selectedCustom.config) : undefined;
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <button
-              onClick={() => navigate('/security')}
-              className="p-2 -ml-2 text-text-dim hover:text-text"
-            >
-              <ArrowLeft size={24} />
-            </button>
-            <h1 className="ml-2 text-lg font-semibold">
-              Lock #{index + 1}
-            </h1>
-          </div>
-          {!isPlaying && (
-            <button
-              onClick={handleConfirm}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-background font-medium rounded-xl disabled:opacity-60"
-            >
-              <Check size={18} />
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          )}
-        </div>
+    <div className="defense-picker">
+      <header className="picker-header">
+        <button className="icon-button" onClick={() => navigate('/security')} aria-label="Back to defense configuration"><ArrowLeft size={20} /></button>
+        <div><p className="eyebrow">DEFENSE BUILDER</p><h1>Configure lock {index + 1}</h1></div>
+        <StateBadge state="secure" label={`Slot ${index + 1}`} compact />
       </header>
 
-      <div className="px-4 py-6">
-        {/* Preview/Test Area */}
-        <AnimatePresence mode="wait">
-          {isPlaying ? (
-            <motion.div
-              key="playing"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="mb-6"
-            >
-              <div className="card-clean p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-sm text-text-dim">Testing: {previewName}</span>
-                  <button
-                    onClick={() => setIsPlaying(false)}
-                    className="p-2 text-text-dim hover:text-text"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-                {renderGamePreview()}
-              </div>
-            </motion.div>
+      <aside className="picker-config" aria-label="Selected game configuration">
+        <div className="picker-config__identity">
+          <GameEmblem type={previewType} />
+          <div><p className="eyebrow">SELECTED GAME</p><h2>{selectedName}</h2><p>{selectedDescription}</p></div>
+          <StateBadge state={selectedDifficulty < .33 ? 'secure' : selectedDifficulty < .66 ? 'warning' : 'attacking'} label={getDifficultyLabel(selectedDifficulty)} compact />
+        </div>
+        <div className="picker-config__details">
+          {!selectedCustom ? (
+            <label className="difficulty-control">
+              <span><b>Difficulty</b><output>{Math.round(difficulty * 100)}% · {getDifficultyLabel(difficulty)}</output></span>
+              <input type="range" min="0" max="1" step="0.01" value={difficulty} onChange={(event) => setDifficulty(Number(event.target.value))} aria-describedby="difficulty-explanation" />
+              <small id="difficulty-explanation">Raises speed, complexity, sequence length, or reduces recovery time continuously—depending on the game.</small>
+            </label>
           ) : (
-            <motion.div
-              key="preview"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="mb-6"
-            >
-              <div className="card-clean p-6 text-center">
-                <span className="text-6xl block mb-3">{previewIcon}</span>
-                <h2 className="text-xl font-semibold mb-1">{previewName}</h2>
-                <p className="text-text-dim text-sm mb-4">{previewDesc}</p>
-                {selectedCustom && (
-                  <p className="text-xs text-primary mb-4">
-                    Community game · calibrated {selectedCustom.calibrated_difficulty !== null
-                      ? `${Math.round(selectedCustom.calibrated_difficulty * 100)}%`
-                      : '—'} difficulty
-                  </p>
-                )}
-
-                <button
-                  onClick={handleTryGame}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-surface-light border border-border rounded-xl text-text hover:border-primary/50 transition-colors"
-                >
-                  <Play size={18} />
-                  Try It
-                </button>
-              </div>
-            </motion.div>
+            <div className="calibrated-lock"><Sparkles size={18} /><span>Community difficulty is calibrated and locked at {Math.round(selectedDifficulty * 100)}%.</span></div>
           )}
-        </AnimatePresence>
+          <div className="configuration-metrics"><span><ShieldCheck size={15} />Security contribution <b>+{securityContribution}</b></span><span><Clock3 size={15} />Expected time <b>~{selectedMeta.duration}s</b></span><span><Gamepad2 size={15} />Attacker experience <b>{attackerExperience}</b></span></div>
+        </div>
+        <div className="picker-config__actions"><button className="btn-secondary" onClick={() => setIsPlaying(true)}><Play size={17} /> Try it</button><button className="btn-neon" onClick={handleSave} disabled={saving}><Save size={17} /> {saving ? 'Saving…' : 'Save lock'}</button></div>
+      </aside>
 
-        {/* Game Selection Grid */}
-        {!isPlaying && (
-          <>
-            {/* Community + custom games. Equipping one pays its creator a
-                royalty on every attack that hits this slot. */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-text-dim uppercase tracking-wide">
-                  Community Games
-                </h3>
-                <button
-                  onClick={() => navigate('/marketplace')}
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <Store size={12} />
-                  Browse all
-                </button>
-              </div>
-              {customGames.length === 0 ? (
-                <button
-                  onClick={() => navigate('/custom-games')}
-                  className="w-full card-clean p-4 text-left flex items-center gap-3 hover:border-primary/40 transition-colors"
-                >
-                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Sparkles size={16} className="text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Build your own game</p>
-                    <p className="text-xs text-text-dim">No live community games yet — design one with AI.</p>
-                  </div>
-                </button>
-              ) : (
-                <div className="grid grid-cols-4 gap-3">
-                  {customGames.map((game) => (
-                    <motion.button
-                      key={game.id}
-                      className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${
-                        selectedCustom?.id === game.id
-                          ? 'bg-primary/20 border-2 border-primary'
-                          : 'bg-surface border border-border hover:border-primary/30'
-                      }`}
-                      onClick={() => handleSelectCustom(game)}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      <span className="text-2xl mb-1">✨</span>
-                      <span
-                        className={`text-xs truncate w-full text-center ${
-                          selectedCustom?.id === game.id ? 'text-primary' : 'text-text-dim'
-                        }`}
-                      >
-                        {sanitizeUserText(game.name, { maxLength: 24 })}
-                      </span>
-                    </motion.button>
-                  ))}
-                </div>
-              )}
-            </div>
+      <main className="game-catalog">
+        <div className="catalog-tools">
+          <label className="catalog-search"><Search size={18} /><span className="sr-only">Search games</span><input type="search" placeholder="Search 36 games" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+          <nav className="catalog-tabs" aria-label="Game categories">
+            {TABS.map((tab) => <button key={tab.id} className={activeTab === tab.id ? 'active' : ''} onClick={() => setActiveTab(tab.id)} aria-pressed={activeTab === tab.id}>{tab.label}</button>)}
+          </nav>
+        </div>
 
-            {categoryOrder.map((catKey) => {
-              const catInfo = MODULE_CATEGORIES[catKey as keyof typeof MODULE_CATEGORIES];
-              const games = modulesByCategory[catKey as keyof typeof modulesByCategory];
-              if (!games || games.length === 0) return null;
-
-              return (
-                <div key={catKey} className="mb-6">
-                  <h3 className="text-sm font-semibold text-text-dim mb-3 uppercase tracking-wide">
-                    {catInfo.name}
-                  </h3>
-                  <div className="grid grid-cols-4 gap-3">
-                    {games.map((game) => (
-                      <motion.button
-                        key={game.type}
-                        className={`
-                          flex flex-col items-center justify-center p-3
-                          rounded-xl transition-all
-                          ${selectedType === game.type && !selectedCustom
-                            ? 'bg-primary/20 border-2 border-primary'
-                            : 'bg-surface border border-border hover:border-primary/30'
-                          }
-                        `}
-                        onClick={() => handleSelectGame(game.type as ModuleType)}
-                        whileTap={{ scale: 0.95 }}
-                      >
-                        <span className="text-2xl mb-1">{game.icon}</span>
-                        <span className={`text-xs truncate w-full text-center ${
-                          selectedType === game.type && !selectedCustom ? 'text-primary' : 'text-text-dim'
-                        }`}>
-                          {game.name}
-                        </span>
-                      </motion.button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Difficulty Slider — built-in modules only; custom games use
-                their calibrated difficulty. */}
-            {!selectedCustom && (
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-text-dim mb-3 uppercase tracking-wide">
-                  Difficulty
-                </h3>
-                <div className="card-clean p-4">
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={difficulty}
-                    onChange={(e) => setDifficulty(parseFloat(e.target.value))}
-                    className="w-full h-2 bg-surface-light rounded-full appearance-none cursor-pointer accent-primary"
-                  />
-                  <div className="flex justify-between mt-2 text-sm">
-                    <span className="text-text-dim">Easy</span>
-                    <span className={`font-medium ${
-                      difficulty < 0.33 ? 'text-primary' : difficulty < 0.66 ? 'text-warning' : 'text-danger'
-                    }`}>
-                      {difficulty < 0.33 ? 'Easy' : difficulty < 0.66 ? 'Medium' : 'Hard'}
-                    </span>
-                    <span className="text-text-dim">Hard</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
+        {activeTab === 'community' && (
+          <div className="community-tools"><button onClick={() => navigate('/custom-games')}><Sparkles size={16} /> Build your own game</button><button onClick={() => navigate('/marketplace')}><Store size={16} /> Browse all</button></div>
         )}
-      </div>
+
+        <section className="rich-game-grid" aria-label={`${TABS.find((tab) => tab.id === activeTab)?.label} games`}>
+          {visibleCustomGames.map((game) => {
+            const selected = selectedCustom?.id === game.id;
+            const favorite = favorites.has(game.id);
+            const meta = getCatalogMeta(game.base_engine as ModuleType);
+            return (
+              <motion.article key={game.id} className={`rich-game-card ${selected ? 'selected' : ''}`} layout>
+                <button className="rich-game-card__select" onClick={() => selectCustom(game)} aria-label={`Select ${sanitizeUserText(game.name, { maxLength: 60 })}`}>
+                  <GameEmblem type={game.base_engine} /><div className="rich-game-card__copy"><span className="eyebrow">COMMUNITY</span><h3>{sanitizeUserText(game.name, { maxLength: 60 })}</h3><p>{sanitizeUserText(game.description, { maxLength: 110 })}</p></div>
+                </button>
+                <button className="favorite-button" onClick={() => toggleFavorite(game.id)} aria-label={favorite ? `Remove ${game.name} from favorites` : `Add ${game.name} to favorites`} aria-pressed={favorite}><Heart size={18} fill={favorite ? 'currentColor' : 'none'} /></button>
+                <div className="game-card-meta"><span>{meta.skills.join(' · ')}</span><span>~{meta.duration}s</span><span>{meta.control}</span><span>{game.calibration_stats?.solveRate === undefined ? 'Solve rate unavailable' : `${Math.round(game.calibration_stats.solveRate * 100)}% solve rate`}</span></div>
+                {selected && <StateBadge state="secure" label="Selected" compact />}
+              </motion.article>
+            );
+          })}
+
+          {builtInGames.map((type) => {
+            const config = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG];
+            const meta = getCatalogMeta(type);
+            const selected = !selectedCustom && selectedType === type;
+            const equipped = securityLoadout.modules.some((module) => module.type === type);
+            const favorite = favorites.has(type);
+            return (
+              <motion.article key={type} className={`rich-game-card ${selected ? 'selected' : ''}`} layout>
+                <button className="rich-game-card__select" onClick={() => selectBuiltIn(type)} aria-label={`Select ${config.name}`}>
+                  <GameEmblem type={type} /><div className="rich-game-card__copy"><span className="eyebrow">{config.category}</span><h3>{config.name}</h3><p>{config.description}</p></div>
+                </button>
+                <button className="favorite-button" onClick={() => toggleFavorite(type)} aria-label={favorite ? `Remove ${config.name} from favorites` : `Add ${config.name} to favorites`} aria-pressed={favorite}><Heart size={18} fill={favorite ? 'currentColor' : 'none'} /></button>
+                <div className="game-card-meta"><span>{meta.skills.join(' · ')}</span><span>~{meta.duration}s</span><span>{meta.control}</span><span>Calibration pending</span></div>
+                <div className="game-card-states">{equipped && <StateBadge state="secure" label="Equipped" compact />}{selected && <StateBadge state="cracked" label="Selected" compact />}{recent.includes(type) && <span className="recent-tag">Recent</span>}</div>
+              </motion.article>
+            );
+          })}
+
+          {visibleCustomGames.length === 0 && builtInGames.length === 0 && (
+            <div className="honest-empty catalog-empty"><Search size={26} /><div><strong>No games in this view</strong><span>{activeTab === 'favorites' ? 'Favorite a game to keep it here.' : activeTab === 'community' ? 'No live community games are available offline.' : 'Try a different search.'}</span></div></div>
+          )}
+        </section>
+      </main>
+
+      <AnimatePresence>
+        {isPlaying && (
+          <motion.div className="game-preview-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <section className="game-preview-modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+              <header><div><p className="eyebrow">DEFENSE TEST</p><h2 id="preview-title">{selectedName}</h2></div><button className="icon-button" onClick={() => setIsPlaying(false)} aria-label="Close game preview"><X size={20} /></button></header>
+              <div className="game-preview-playfield"><MiniGameHost moduleType={previewType} moduleId={`preview-${selectedCustom?.id ?? selectedType}`} difficulty={selectedDifficulty} seed={`preview-${selectedCustom?.id ?? selectedType}`} config={previewConfig} mode={selectedCustom?.mode} onComplete={() => setIsPlaying(false)} onFail={() => setIsPlaying(false)} /></div>
+            </section>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

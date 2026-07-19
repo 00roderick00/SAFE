@@ -64,6 +64,21 @@ export const AsteroidsGame = ({ difficulty, onComplete }: AsteroidsGameProps) =>
     setTotalAsteroids(count * 3); // Each large splits into medium, then small
   }, [difficulty]);
 
+  const handleGameEnd = useCallback(() => {
+    if (gameOver) return;
+    setGameOver(true);
+    const timeSpent = Date.now() - startTime.current;
+    const percentDestroyed = totalAsteroids > 0 ? Math.min(1, score / totalAsteroids) : 0;
+
+    onComplete({
+      moduleId: 'asteroids',
+      moduleType: 'asteroids',
+      score: percentDestroyed,
+      passed: percentDestroyed >= 0.4,
+      timeSpent,
+    });
+  }, [gameOver, score, totalAsteroids, onComplete]);
+
   // Timer
   useEffect(() => {
     if (gameOver) return;
@@ -77,7 +92,7 @@ export const AsteroidsGame = ({ difficulty, onComplete }: AsteroidsGameProps) =>
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [gameOver]);
+  }, [gameOver, handleGameEnd]);
 
   // Move asteroids
   useEffect(() => {
@@ -170,29 +185,14 @@ export const AsteroidsGame = ({ difficulty, onComplete }: AsteroidsGameProps) =>
         handleGameEnd();
       }
     });
-  }, [shipX, shipY, asteroids]);
+  }, [shipX, shipY, asteroids, handleGameEnd]);
 
   // Check win condition
   useEffect(() => {
     if (asteroids.length > 0 && asteroids.every((a) => !a.alive)) {
       handleGameEnd();
     }
-  }, [asteroids]);
-
-  const handleGameEnd = useCallback(() => {
-    if (gameOver) return;
-    setGameOver(true);
-    const timeSpent = Date.now() - startTime.current;
-    const percentDestroyed = totalAsteroids > 0 ? Math.min(1, score / totalAsteroids) : 0;
-
-    onComplete({
-      moduleId: 'asteroids',
-      moduleType: 'asteroids',
-      score: percentDestroyed,
-      passed: percentDestroyed >= 0.4,
-      timeSpent,
-    });
-  }, [gameOver, score, totalAsteroids, onComplete]);
+  }, [asteroids, handleGameEnd]);
 
   const shoot = () => {
     if (gameOver) return;
@@ -313,7 +313,7 @@ export const AsteroidsGame = ({ difficulty, onComplete }: AsteroidsGameProps) =>
           GO
         </button>
         <button
-          className="px-4 py-3 bg-danger rounded-lg active:bg-danger/80 text-white font-bold"
+          className="px-4 py-3 bg-danger rounded-lg active:bg-danger-dim text-background font-bold"
           onTouchStart={shoot}
           onClick={shoot}
         >

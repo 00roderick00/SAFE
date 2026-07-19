@@ -1,28 +1,38 @@
-// Home Screen - Portfolio Style with Safe Graphic
-// Features: Safe with balance inside, contained earnings graph, activity feed
-
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  Crosshair,
+  History,
+  Settings,
+  Shield,
+  ShieldCheck,
+  TestTube2,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Shield, AlertTriangle, Target } from 'lucide-react';
 import { ActivityFeed } from '../components/ActivityFeed';
-import { SafeGraphic } from '../components/SafeGraphic';
 import { EarningsGraph, TimeRangePills } from '../components/EarningsGraph';
-import { generateSampleData, filterDataByRange } from '../components/earningsData';
-import { usePlayerStore } from '../store/playerStore';
-import { useGameStore } from '../store/gameStore';
+import type { TimeRange } from '../components/earningsData';
+import { filterDataByRange } from '../components/earningsData';
+import { SafeGraphic, type VaultState } from '../components/SafeGraphic';
+import { StateBadge, StateFrame } from '../components/game';
 import { calculateEconomyStats } from '../game/economy';
-import { haptics } from '../utils/haptics';
-import { useSession } from '../services/useSession';
+import { buildBalanceHistory } from '../game/presentation';
 import { api } from '../services/api';
+import { useSession } from '../services/useSession';
+import { useGameStore } from '../store/gameStore';
+import { usePlayerStore } from '../store/playerStore';
+import { haptics } from '../utils/haptics';
 
-type TimeRange = '1D' | '1W' | '1M' | '3M' | 'YTD' | 'ALL';
+const formatTokens = (value: number) => `${Math.round(value).toLocaleString()} TK`;
 
 export const HomeScreen = () => {
   const navigate = useNavigate();
-  const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
+  const session = useSession();
+  const [now, setNow] = useState(() => Date.now());
   const [timeRange, setTimeRange] = useState<TimeRange>('1W');
-
   const {
     safeBalance,
     securityLoadout,
@@ -30,371 +40,233 @@ export const HomeScreen = () => {
     heistModeActive,
     heistModeExpiresAt,
     exitHeistMode,
-    enterHeistMode,
     addEarnings,
     consumeInsuranceClaim,
   } = usePlayerStore();
+  const {
+    simulateDefense,
+    addDefenseEvent,
+    addNotification,
+    refreshBotSafes,
+    botSafes,
+    attackHistory,
+    defenseHistory,
+  } = useGameStore();
 
   const stats = calculateEconomyStats(safeBalance, securityLoadout);
-  const isInsured = insurancePolicy && Date.now() < insurancePolicy.expiresAt;
+  const insured = Boolean(insurancePolicy && now < insurancePolicy.expiresAt);
+  const latestDefense = defenseHistory[0];
+  const latestDefenseAge = latestDefense ? now - latestDefense.timestamp : Infinity;
+  const vaultState: VaultState = heistModeActive
+    ? 'exposed'
+    : latestDefense && !latestDefense.success && latestDefenseAge < 8_000
+      ? 'breached'
+      : latestDefense && !latestDefense.success && latestDefenseAge < 5 * 60_000
+        ? 'recovering'
+        : 'secure';
+  const timeRemaining = heistModeActive && heistModeExpiresAt
+    ? Math.max(0, heistModeExpiresAt - now)
+    : 0;
+  const timeLabel = `${Math.floor(timeRemaining / 60_000)}:${Math.floor((timeRemaining % 60_000) / 1_000).toString().padStart(2, '0')}`;
 
-  const { simulateDefense, addDefenseEvent, addNotification, refreshBotSafes, botSafes } =
-    useGameStore();
-  const session = useSession();
+  const balanceHistory = useMemo(
+    () => buildBalanceHistory(safeBalance, attackHistory, defenseHistory),
+    [safeBalance, attackHistory, defenseHistory],
+  );
+  const filteredHistory = useMemo(
+    () => filterDataByRange(balanceHistory, timeRange),
+    [balanceHistory, timeRange],
+  );
+  const periodDelta = filteredHistory.length > 1
+    ? filteredHistory[filteredHistory.length - 1].value - filteredHistory[0].value
+    : 0;
 
-  // Generate sample earnings data
-  const allEarningsData = useMemo(() => {
-    return generateSampleData(365, safeBalance * 0.7, 0.03);
-  }, [safeBalance]);
+  const securityLabel = stats.securityScore >= 65 ? 'Hardened' : stats.securityScore >= 35 ? 'Operational' : 'Vulnerable';
+  const recommendation = securityLoadout.modules.length < 3
+    ? 'Fill every lock slot before exposing your vault.'
+    : stats.securityScore < 35
+      ? 'Raise one lock difficulty or add a logic game to strengthen your mix.'
+      : insured
+        ? 'Defense ready. Test the sequence, then choose a target.'
+        : 'Defense ready. Insurance is optional before exposure.';
 
-  const filteredData = useMemo(() => {
-    return filterDataByRange(allEarningsData, timeRange);
-  }, [allEarningsData, timeRange]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  // Calculate period change
-  const periodChange = useMemo(() => {
-    if (filteredData.length < 2) return { amount: 0, percent: 0 };
-    const first = filteredData[0].value;
-    const last = filteredData[filteredData.length - 1].value;
-    return {
-      amount: last - first,
-      percent: first > 0 ? ((last - first) / first) * 100 : 0,
-    };
-  }, [filteredData]);
+  useEffect(() => {
+    if (heistModeActive && heistModeExpiresAt && now >= heistModeExpiresAt) {
+      exitHeistMode();
+      addNotification({
+        type: 'heist_ended',
+        title: 'Exposure ended',
+        message: 'Your vault is secure again.',
+      });
+    }
+  }, [heistModeActive, heistModeExpiresAt, now, exitHeistMode, addNotification]);
 
-  // Handle time range change
-  const handleTimeRangeChange = useCallback((range: TimeRange) => {
+  useEffect(() => {
+    if (!heistModeActive) return;
+    const interval = window.setInterval(async () => {
+      if (session) {
+        try {
+          const result = await api.resolveDefense();
+          if (!result.attacked) return;
+          if (typeof result.newBalance === 'number') usePlayerStore.setState({ safeBalance: result.newBalance });
+          addNotification({
+            type: result.success ? 'defense_success' : 'defense_fail',
+            title: result.success ? 'Attack repelled' : 'Vault breached',
+            message: result.success
+              ? `${result.attackerName} failed. You earned ${result.feeEarned} tokens.`
+              : `${result.attackerName} took ${result.lootLost} tokens${(result.insurancePayout ?? 0) > 0 ? `; insurance returned ${result.insurancePayout}` : ''}.`,
+          });
+        } catch (error) {
+          console.warn('[defense] server tick failed', error);
+        }
+        return;
+      }
+      const state = usePlayerStore.getState();
+      const result = simulateDefense(state.safeBalance, state.securityLoadout, state.insurancePolicy);
+      if (!result) return;
+      addDefenseEvent(result);
+      if (result.success) {
+        addEarnings(result.feeEarned);
+      } else {
+        state.recordLoss(result.lootLost);
+        if (result.insurancePayout > 0) {
+          addEarnings(result.insurancePayout);
+          consumeInsuranceClaim();
+        }
+      }
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [heistModeActive, session, simulateDefense, addDefenseEvent, addNotification, addEarnings, consumeInsuranceClaim]);
+
+  useEffect(() => {
+    if (botSafes.length === 0) refreshBotSafes(usePlayerStore.getState().riskRating);
+  }, [botSafes.length, refreshBotSafes]);
+
+  const setRange = useCallback((range: TimeRange) => {
     haptics.selection();
     setTimeRange(range);
   }, []);
 
-  // Update countdown timer
-  useEffect(() => {
-    if (!heistModeActive || !heistModeExpiresAt) {
-      setTimeRemaining(null);
-      return;
+  const handlePrimaryAction = () => {
+    haptics.medium();
+    if (heistModeActive) {
+      navigate('/heist');
+    } else if (securityLoadout.modules.length < 3 || stats.securityScore < 35) {
+      navigate('/security');
+    } else {
+      navigate('/heist');
     }
+  };
 
-    const updateTimer = () => {
-      const remaining = heistModeExpiresAt - Date.now();
-      if (remaining <= 0) {
-        setTimeRemaining(null);
-        exitHeistMode();
-        addNotification({
-          type: 'heist_ended',
-          title: 'Heist Mode Ended',
-          message: 'Your heist session has expired. Your safe is now protected.',
-        });
-      } else {
-        const minutes = Math.floor(remaining / 60000);
-        const seconds = Math.floor((remaining % 60000) / 1000);
-        setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
-      }
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [heistModeActive, heistModeExpiresAt, exitHeistMode, addNotification]);
-
-  // Simulate occasional attacks when in heist mode. When a Supabase
-  // session exists, resolution happens server-side (api.resolveDefense);
-  // otherwise fall back to the client-only simulator.
-  useEffect(() => {
-    if (!heistModeActive) return;
-
-    const interval = setInterval(async () => {
-      if (session) {
-        try {
-          const r = await api.resolveDefense();
-          if (!r.attacked) return;
-
-          if (r.newBalance !== null && r.newBalance !== undefined) {
-            usePlayerStore.setState({ safeBalance: r.newBalance });
-          }
-          if (r.success) {
-            addNotification({
-              type: 'defense_success',
-              title: 'Attack Defended!',
-              message: `${r.attackerName} failed to breach your safe. You earned ${r.feeEarned} tokens.`,
-            });
-          } else if ((r.insurancePayout ?? 0) > 0) {
-            addNotification({
-              type: 'defense_fail',
-              title: 'Safe Breached — Insurance Paid Out',
-              message: `${r.attackerName} breached your safe. You lost ${r.lootLost} tokens; insurance reimbursed ${r.insurancePayout}.`,
-            });
-          } else {
-            addNotification({
-              type: 'defense_fail',
-              title: 'Safe Breached!',
-              message: `${r.attackerName} breached your safe and stole ${r.lootLost} tokens.`,
-            });
-          }
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn('[defense] server tick failed', err);
-        }
-        return;
-      }
-
-      // Legacy local simulation (no session).
-      const state = usePlayerStore.getState();
-      const defenseResult = simulateDefense(
-        state.safeBalance,
-        state.securityLoadout,
-        state.insurancePolicy
-      );
-
-      if (defenseResult) {
-        addDefenseEvent(defenseResult);
-
-        if (defenseResult.success) {
-          addEarnings(defenseResult.feeEarned);
-          addNotification({
-            type: 'defense_success',
-            title: 'Attack Defended!',
-            message: `${defenseResult.attackerName} failed to breach your safe. You earned ${defenseResult.feeEarned} tokens.`,
-          });
-        } else {
-          usePlayerStore.getState().recordLoss(defenseResult.lootLost);
-          if (defenseResult.insurancePayout > 0) {
-            addEarnings(defenseResult.insurancePayout);
-            consumeInsuranceClaim();
-            addNotification({
-              type: 'defense_fail',
-              title: 'Safe Breached — Insurance Paid Out',
-              message: `${defenseResult.attackerName} breached your safe. You lost ${defenseResult.lootLost} tokens; insurance reimbursed ${defenseResult.insurancePayout}.`,
-            });
-          } else {
-            addNotification({
-              type: 'defense_fail',
-              title: 'Safe Breached!',
-              message: `${defenseResult.attackerName} breached your safe and stole ${defenseResult.lootLost} tokens.`,
-            });
-          }
-        }
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [
-    heistModeActive,
-    session,
-    simulateDefense,
-    addDefenseEvent,
-    addNotification,
-    addEarnings,
-    consumeInsuranceClaim,
-  ]);
-
-  // Refresh bot safes on mount
-  useEffect(() => {
-    if (botSafes.length === 0) {
-      const rating = usePlayerStore.getState().riskRating;
-      refreshBotSafes(rating);
-    }
-  }, [botSafes.length, refreshBotSafes]);
-
-  const isProfit = periodChange.amount >= 0;
+  const primaryLabel = heistModeActive
+    ? 'Continue heist'
+    : securityLoadout.modules.length < 3 || stats.securityScore < 35
+      ? 'Strengthen defenses'
+      : 'Enter heist mode';
 
   return (
-    <div className={`min-h-screen pb-32 ${heistModeActive ? 'danger-mode' : ''}`}>
-      {/* Danger Banner - Heist Mode Active */}
-      <AnimatePresence>
-        {heistModeActive && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="danger-banner mx-4 mt-4">
-              <div className="danger-banner-text">
-                <AlertTriangle size={18} />
-                <span>VAULT EXPOSED</span>
-              </div>
-              {timeRemaining && (
-                <div className="danger-banner-timer">{timeRemaining}</div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Header */}
-      <header className="px-4 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">SAFE</h1>
-        <button
-          onClick={() => {
-            haptics.light();
-            navigate('/security');
-          }}
-          className="p-2 text-text-dim hover:text-text transition-colors"
-        >
-          <Settings size={22} />
+    <div className={`home-vault ${heistModeActive ? 'danger-mode' : ''}`}>
+      <header className="tactical-header">
+        <div>
+          <p className="eyebrow">SAFE // VAULT 01</p>
+          <h1>Command vault</h1>
+        </div>
+        <button className="icon-button" onClick={() => navigate('/security')} aria-label="Open vault settings">
+          <Settings size={21} aria-hidden="true" />
         </button>
       </header>
 
-      {/* Safe Graphic with Balance */}
-      <motion.div
-        className="flex justify-center py-4"
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: 'spring', damping: 20 }}
-      >
-        <SafeGraphic
-          size={180}
-          isVulnerable={heistModeActive}
-          balance={safeBalance}
-        />
-      </motion.div>
-
-      {/* Period Change Indicator */}
-      <motion.div
-        className="text-center mb-4"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-      >
-        <p className={`text-sm font-medium ${isProfit ? 'text-profit' : 'text-loss'}`}>
-          {isProfit ? '+' : ''}{periodChange.percent.toFixed(1)}% this {timeRange === '1D' ? 'day' : timeRange === '1W' ? 'week' : 'period'}
-        </p>
-      </motion.div>
-
-      {/* Earnings Graph Card - Contained */}
-      <motion.div
-        className="mx-4 mb-6"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <div className="card-bordered p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="section-label">Performance</span>
-            <span className={`text-sm font-semibold ${isProfit ? 'text-profit' : 'text-loss'}`}>
-              {isProfit ? '+' : ''}${Math.abs(periodChange.amount).toFixed(0)}
-            </span>
-          </div>
-
-          <EarningsGraph
-            data={filteredData}
-            height={120}
-          />
-
-          <TimeRangePills
-            selected={timeRange}
-            onChange={handleTimeRangeChange}
-          />
+      <main>
+        <div className="vault-status-row">
+          <StateBadge state={vaultState} />
+          {heistModeActive && <span className="exposure-clock"><AlertTriangle size={15} /> Exposure {timeLabel}</span>}
         </div>
-      </motion.div>
 
-      {/* Quick Stats Row */}
-      <motion.div
-        className="mx-4 mb-6 grid grid-cols-2 gap-3"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <button
-          className="card-bordered p-4 text-left"
-          onClick={() => {
-            haptics.light();
-            navigate('/security');
-          }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Shield size={16} className="text-neon" />
-            <span className="text-xs text-text-dim">Security</span>
+        <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }}>
+          <SafeGraphic
+            size={330}
+            state={vaultState}
+            balance={safeBalance}
+            locks={securityLoadout.modules}
+            onLockSelect={(index) => navigate(`/security/pick/${index}`)}
+          />
+        </motion.div>
+
+        <section className="vault-metrics" aria-label="Vault status details">
+          <div><span>Balance</span><strong>{formatTokens(safeBalance)}</strong></div>
+          <div><span>Potential loss</span><strong className="text-warning">{formatTokens(stats.potentialLoot)}</strong></div>
+          <div><span>Security</span><strong>{securityLabel} · {Math.round(stats.securityScore)}</strong></div>
+          <div><span>Insurance</span><strong>{insured ? 'Active' : 'Not active'}</strong></div>
+        </section>
+
+        <StateFrame state={stats.securityScore < 35 ? 'warning' : 'secure'} className="next-action-panel" label="Recommended next action">
+          <div>
+            <p className="eyebrow">NEXT ACTION</p>
+            <strong>{recommendation}</strong>
           </div>
-          <p className="font-semibold">{Math.round(stats.securityScore)}/100</p>
-        </button>
+          <ArrowRight size={20} aria-hidden="true" />
+        </StateFrame>
 
-        <button
-          className="card-bordered p-4 text-left"
-          onClick={() => {
-            haptics.light();
-            navigate('/insurance');
-          }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Shield size={16} className={isInsured ? 'text-profit' : 'text-text-dim'} />
-            <span className="text-xs text-text-dim">Insurance</span>
-          </div>
-          <p className={`font-semibold ${isInsured ? 'text-profit' : ''}`}>
-            {isInsured ? 'Active' : 'None'}
-          </p>
-        </button>
-      </motion.div>
-
-      {/* Activity Section */}
-      <motion.div
-        className="px-4"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <span className="section-label">Activity</span>
-          <button
-            className="text-xs text-text-dim hover:text-text"
-            onClick={() => navigate('/history')}
-          >
-            See all
+        <div className="vault-quick-actions">
+          <button className="btn-secondary" onClick={() => navigate('/security?test=sequence')}>
+            <TestTube2 size={18} aria-hidden="true" /> Test my vault
+          </button>
+          <button className="btn-secondary" onClick={() => navigate('/insurance')}>
+            <ShieldCheck size={18} aria-hidden="true" /> Insurance
           </button>
         </div>
-        <ActivityFeed />
-      </motion.div>
 
-      {/* Fixed Action Bar */}
-      <div className="action-bar">
-        {heistModeActive ? (
-          <>
-            <button
-              className="btn-danger"
-              onClick={() => {
-                haptics.medium();
-                navigate('/heist');
-              }}
-            >
-              <Target size={18} className="mr-2" />
-              Continue Heist
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => {
-                haptics.light();
-                exitHeistMode();
-              }}
-            >
-              Exit
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              className="btn-secondary"
-              onClick={() => {
-                haptics.light();
-                navigate('/security');
-              }}
-            >
-              <Shield size={18} className="mr-2" />
-              Defend
-            </button>
-            <button
-              className="btn-neon"
-              onClick={() => {
-                haptics.medium();
-                enterHeistMode();
-                navigate('/heist');
-              }}
-            >
-              <Target size={18} className="mr-2" />
-              Attack
-            </button>
-          </>
+        <section className="home-section">
+          <div className="section-title-row">
+            <div><p className="eyebrow">DEFENSE LOG</p><h2>Latest contact</h2></div>
+            <button onClick={() => navigate('/history')} className="text-button"><History size={16} /> Full log</button>
+          </div>
+          {latestDefense ? (
+            <StateFrame state={latestDefense.success ? 'secure' : 'breached'} className="recent-defense" label="Recent defensive result">
+              <Shield size={22} aria-hidden="true" />
+              <div>
+                <strong>{latestDefense.success ? 'Attack repelled' : 'Vault breached'}</strong>
+                <span>{latestDefense.attackerName} · {latestDefense.success ? `+${latestDefense.feeEarned} TK earned` : `-${latestDefense.lootLost - latestDefense.insurancePayout} TK net loss`}</span>
+              </div>
+            </StateFrame>
+          ) : (
+            <div className="honest-empty"><Activity size={24} /><div><strong>No defensive contacts</strong><span>Expose your vault to begin recording real results.</span></div></div>
+          )}
+        </section>
+
+        <details className="stats-disclosure home-section">
+          <summary><span><Activity size={18} /> Vault statistics</span><span>Secondary</span></summary>
+          {balanceHistory.length > 1 ? (
+            <div className="stats-content">
+              <div className="section-title-row"><span className="eyebrow">SETTLED BALANCE HISTORY</span><strong className={periodDelta >= 0 ? 'text-profit' : 'text-loss'}>{periodDelta >= 0 ? '+' : ''}{Math.round(periodDelta)} TK</strong></div>
+              <EarningsGraph data={filteredHistory} height={128} />
+              <TimeRangePills selected={timeRange} onChange={setRange} />
+            </div>
+          ) : (
+            <div className="honest-empty"><Activity size={24} /><div><strong>No performance history yet</strong><span>The chart appears after real settled attacks or defenses.</span></div></div>
+          )}
+        </details>
+
+        <section className="home-section activity-section">
+          <div className="section-title-row"><div><p className="eyebrow">ACTIVITY</p><h2>Operations log</h2></div></div>
+          <ActivityFeed />
+        </section>
+      </main>
+
+      <div className="action-bar" aria-label="Vault actions">
+        {heistModeActive && (
+          <button className="btn-secondary" onClick={() => { haptics.light(); exitHeistMode(); }}>
+            Exit exposure
+          </button>
         )}
+        <button className={heistModeActive ? 'btn-danger' : 'btn-neon'} onClick={handlePrimaryAction}>
+          <Crosshair size={18} aria-hidden="true" /> {primaryLabel}
+        </button>
       </div>
     </div>
   );

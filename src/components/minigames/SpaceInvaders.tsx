@@ -55,6 +55,22 @@ export const SpaceInvaders = ({ difficulty, onComplete }: SpaceInvadersProps) =>
     setTotalAliens(newAliens.length);
   }, [difficulty]);
 
+  const handleGameEnd = useCallback(() => {
+    if (gameOver) return;
+    setGameOver(true);
+    const timeSpent = Date.now() - startTime.current;
+    const aliensKilled = score;
+    const percentKilled = totalAliens > 0 ? aliensKilled / totalAliens : 0;
+
+    onComplete({
+      moduleId: 'spaceinvaders',
+      moduleType: 'spaceinvaders',
+      score: percentKilled,
+      passed: percentKilled >= 0.5,
+      timeSpent,
+    });
+  }, [gameOver, score, totalAliens, onComplete]);
+
   // Timer
   useEffect(() => {
     if (gameOver) return;
@@ -68,7 +84,7 @@ export const SpaceInvaders = ({ difficulty, onComplete }: SpaceInvadersProps) =>
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [gameOver]);
+  }, [gameOver, handleGameEnd]);
 
   // Move aliens down
   useEffect(() => {
@@ -90,7 +106,7 @@ export const SpaceInvaders = ({ difficulty, onComplete }: SpaceInvadersProps) =>
     if (aliens.some((a) => a.alive && a.y > GAME_HEIGHT - 60)) {
       handleGameEnd();
     }
-  }, [aliens]);
+  }, [aliens, handleGameEnd]);
 
   // Move bullets
   useEffect(() => {
@@ -129,23 +145,7 @@ export const SpaceInvaders = ({ difficulty, onComplete }: SpaceInvadersProps) =>
     if (aliens.length > 0 && aliens.every((a) => !a.alive)) {
       handleGameEnd();
     }
-  }, [aliens]);
-
-  const handleGameEnd = useCallback(() => {
-    if (gameOver) return;
-    setGameOver(true);
-    const timeSpent = Date.now() - startTime.current;
-    const aliensKilled = score;
-    const percentKilled = totalAliens > 0 ? aliensKilled / totalAliens : 0;
-
-    onComplete({
-      moduleId: 'spaceinvaders',
-      moduleType: 'spaceinvaders',
-      score: percentKilled,
-      passed: percentKilled >= 0.5,
-      timeSpent,
-    });
-  }, [gameOver, score, totalAliens, onComplete]);
+  }, [aliens, handleGameEnd]);
 
   const shoot = () => {
     if (gameOver) return;
@@ -181,8 +181,8 @@ export const SpaceInvaders = ({ difficulty, onComplete }: SpaceInvadersProps) =>
             key={i}
             className="absolute w-1 h-1 bg-white/30 rounded-full"
             style={{
-              left: Math.random() * GAME_WIDTH,
-              top: Math.random() * GAME_HEIGHT,
+              left: (i * 47 + 13) % GAME_WIDTH,
+              top: (i * 83 + 29) % GAME_HEIGHT,
             }}
           />
         ))}
@@ -232,7 +232,7 @@ export const SpaceInvaders = ({ difficulty, onComplete }: SpaceInvadersProps) =>
           ←
         </button>
         <button
-          className="px-8 py-3 bg-danger rounded-lg active:bg-danger/80 text-white font-bold"
+          className="px-8 py-3 bg-danger rounded-lg active:bg-danger-dim text-background font-bold"
           onTouchStart={shoot}
           onClick={shoot}
         >

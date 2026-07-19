@@ -56,7 +56,7 @@ export const SnakeGame = ({ difficulty, config, onComplete }: MiniGameProps) => 
       };
     } while (snake.some(s => s.x === newFood.x && s.y === newFood.y));
     setFood(newFood);
-  }, [snake]);
+  }, [gridSize, snake]);
 
   const handleGameEnd = useCallback(() => {
     if (gameOver) return;
@@ -127,7 +127,7 @@ export const SnakeGame = ({ difficulty, config, onComplete }: MiniGameProps) => 
       });
     }, tickInterval);
     return () => clearInterval(interval);
-  }, [gameOver, gameStarted, food, tickInterval, handleGameEnd, spawnFood]);
+  }, [gameOver, gameStarted, food, gridSize, tickInterval, handleGameEnd, spawnFood]);
 
   // Keyboard controls
   useEffect(() => {

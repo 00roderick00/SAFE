@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { SecurityModule } from '../types';
-import { MODULE_CONFIG } from '../game/constants';
+import { GameIcon } from './game';
 
 interface SlotMachineProps {
   modules: SecurityModule[];
@@ -8,11 +8,6 @@ interface SlotMachineProps {
 }
 
 export const SlotMachine = ({ modules, onSlotClick }: SlotMachineProps) => {
-  const getModuleIcon = (type: string): string => {
-    const config = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG];
-    return config?.icon || '🎮';
-  };
-
   const getDifficultyLabel = (difficulty: number): string => {
     if (difficulty < 0.33) return 'Easy';
     if (difficulty < 0.66) return 'Med';
@@ -32,13 +27,14 @@ export const SlotMachine = ({ modules, onSlotClick }: SlotMachineProps) => {
           key={module.id}
           className="flex flex-col items-center justify-center w-24 h-28 bg-surface border border-border rounded-2xl hover:border-primary/50 transition-colors"
           onClick={() => onSlotClick(index)}
+          aria-label={`Configure lock ${index + 1}: ${module.name}, ${getDifficultyLabel(module.difficulty)} difficulty`}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.1 }}
         >
-          <span className="text-4xl mb-2">{getModuleIcon(module.type)}</span>
+          <GameIcon type={module.type} size={32} />
           <span className={`text-xs font-medium ${getDifficultyColor(module.difficulty)}`}>
             {getDifficultyLabel(module.difficulty)}
           </span>

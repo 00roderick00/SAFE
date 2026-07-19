@@ -1,86 +1,54 @@
-import type { ComponentType } from 'react';
+import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import type { MiniGameProps, ModuleType } from '../../types';
 
-import { PatternLock } from './PatternLock';
-import { Keypad } from './Keypad';
-import { TimingLock } from './TimingLock';
-import { CombinationLock } from './CombinationLock';
-import { SequenceLock } from './SequenceLock';
-import { SliderLock } from './SliderLock';
-import { RotationLock } from './RotationLock';
-import { WireLock } from './WireLock';
-import { FingerprintLock } from './FingerprintLock';
-import { MorseLock } from './MorseLock';
-import { ColorCodeLock } from './ColorCodeLock';
-import { SafeDialLock } from './SafeDialLock';
+type LazyGame = LazyExoticComponent<ComponentType<MiniGameProps>>;
+type GameModule = Record<string, unknown>;
 
-import { PacmanGame } from './PacmanGame';
-import { SpaceInvaders } from './SpaceInvaders';
-import { FroggerGame } from './FroggerGame';
-import { DonkeyKong } from './DonkeyKong';
-import { CentipedeGame } from './CentipedeGame';
-import { AsteroidsGame } from './AsteroidsGame';
-import { SnakeGame } from './SnakeGame';
-import { BreakoutGame } from './BreakoutGame';
-import { TetrisGame } from './TetrisGame';
-import { GalagaGame } from './GalagaGame';
-import { DigDugGame } from './DigDugGame';
-import { QbertGame } from './QbertGame';
+const lazyGame = (loader: () => Promise<GameModule>, exportName: string): LazyGame => lazy(async () => {
+  const module = await loader();
+  return { default: module[exportName] as ComponentType<MiniGameProps> };
+});
 
-import { QuickMath } from './QuickMath';
-import { WordScramble } from './WordScramble';
-import { MemoryMatch } from './MemoryMatch';
-import { SudokuGame } from './SudokuGame';
-import { JigsawGame } from './JigsawGame';
-import { WordSearchGame } from './WordSearchGame';
-import { LogicGame } from './LogicGame';
-import { MazeGame } from './MazeGame';
-import { SpotDiffGame } from './SpotDiffGame';
-import { ReactionGame } from './ReactionGame';
-import { NumSequenceGame } from './NumSequenceGame';
-import { CipherGame } from './CipherGame';
-
-export const MINIGAME_REGISTRY: Partial<Record<ModuleType, ComponentType<MiniGameProps>>> = {
-  pattern: PatternLock,
-  keypad: Keypad,
-  timing: TimingLock,
-  combination: CombinationLock,
-  sequence: SequenceLock,
-  slider: SliderLock,
-  rotation: RotationLock,
-  wire: WireLock,
-  fingerprint: FingerprintLock,
-  morse: MorseLock,
-  colorcode: ColorCodeLock,
-  safedial: SafeDialLock,
-
-  pacman: PacmanGame,
-  spaceinvaders: SpaceInvaders,
-  frogger: FroggerGame,
-  donkeykong: DonkeyKong,
-  centipede: CentipedeGame,
-  asteroids: AsteroidsGame,
-  snake: SnakeGame,
-  breakout: BreakoutGame,
-  tetris: TetrisGame,
-  galaga: GalagaGame,
-  digdug: DigDugGame,
-  qbert: QbertGame,
-
-  quickmath: QuickMath,
-  wordscramble: WordScramble,
-  memorymatch: MemoryMatch,
-  sudoku: SudokuGame,
-  jigsaw: JigsawGame,
-  wordsearch: WordSearchGame,
-  logic: LogicGame,
-  maze: MazeGame,
-  spotdiff: SpotDiffGame,
-  reaction: ReactionGame,
-  numsequence: NumSequenceGame,
-  cipher: CipherGame,
+/** Each registry entry is a separate Vite chunk; the registry contract remains keyed by ModuleType. */
+export const MINIGAME_REGISTRY: Partial<Record<ModuleType, LazyGame>> = {
+  pattern: lazyGame(() => import('./PatternLock'), 'PatternLock'),
+  keypad: lazyGame(() => import('./Keypad'), 'Keypad'),
+  timing: lazyGame(() => import('./TimingLock'), 'TimingLock'),
+  combination: lazyGame(() => import('./CombinationLock'), 'CombinationLock'),
+  sequence: lazyGame(() => import('./SequenceLock'), 'SequenceLock'),
+  slider: lazyGame(() => import('./SliderLock'), 'SliderLock'),
+  rotation: lazyGame(() => import('./RotationLock'), 'RotationLock'),
+  wire: lazyGame(() => import('./WireLock'), 'WireLock'),
+  fingerprint: lazyGame(() => import('./FingerprintLock'), 'FingerprintLock'),
+  morse: lazyGame(() => import('./MorseLock'), 'MorseLock'),
+  colorcode: lazyGame(() => import('./ColorCodeLock'), 'ColorCodeLock'),
+  safedial: lazyGame(() => import('./SafeDialLock'), 'SafeDialLock'),
+  pacman: lazyGame(() => import('./PacmanGame'), 'PacmanGame'),
+  spaceinvaders: lazyGame(() => import('./SpaceInvaders'), 'SpaceInvaders'),
+  frogger: lazyGame(() => import('./FroggerGame'), 'FroggerGame'),
+  donkeykong: lazyGame(() => import('./DonkeyKong'), 'DonkeyKong'),
+  centipede: lazyGame(() => import('./CentipedeGame'), 'CentipedeGame'),
+  asteroids: lazyGame(() => import('./AsteroidsGame'), 'AsteroidsGame'),
+  snake: lazyGame(() => import('./SnakeGame'), 'SnakeGame'),
+  breakout: lazyGame(() => import('./BreakoutGame'), 'BreakoutGame'),
+  tetris: lazyGame(() => import('./TetrisGame'), 'TetrisGame'),
+  galaga: lazyGame(() => import('./GalagaGame'), 'GalagaGame'),
+  digdug: lazyGame(() => import('./DigDugGame'), 'DigDugGame'),
+  qbert: lazyGame(() => import('./QbertGame'), 'QbertGame'),
+  quickmath: lazyGame(() => import('./QuickMath'), 'QuickMath'),
+  wordscramble: lazyGame(() => import('./WordScramble'), 'WordScramble'),
+  memorymatch: lazyGame(() => import('./MemoryMatch'), 'MemoryMatch'),
+  sudoku: lazyGame(() => import('./SudokuGame'), 'SudokuGame'),
+  jigsaw: lazyGame(() => import('./JigsawGame'), 'JigsawGame'),
+  wordsearch: lazyGame(() => import('./WordSearchGame'), 'WordSearchGame'),
+  logic: lazyGame(() => import('./LogicGame'), 'LogicGame'),
+  maze: lazyGame(() => import('./MazeGame'), 'MazeGame'),
+  spotdiff: lazyGame(() => import('./SpotDiffGame'), 'SpotDiffGame'),
+  reaction: lazyGame(() => import('./ReactionGame'), 'ReactionGame'),
+  numsequence: lazyGame(() => import('./NumSequenceGame'), 'NumSequenceGame'),
+  cipher: lazyGame(() => import('./CipherGame'), 'CipherGame'),
 };
 
-export function getMiniGameComponent(type: ModuleType): ComponentType<MiniGameProps> | null {
+export function getMiniGameComponent(type: ModuleType): LazyGame | null {
   return MINIGAME_REGISTRY[type] ?? null;
 }

@@ -100,6 +100,24 @@ describe('Security screen actions', () => {
     fireEvent.click(screen.getByText('Browse community games'));
     expect(screen.getByText('MARKETPLACE SCREEN')).toBeInTheDocument();
   });
+
+  it('labels every lock action and supports reordering and full-sequence testing', async () => {
+    renderSecurity();
+    expect(screen.getByRole('region', { name: 'Defensive mix analysis' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Equipped lock sequence' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Test Pattern Lock' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Replace Pattern Lock' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move Keypad earlier' }));
+    expect(usePlayerStore.getState().securityLoadout.modules[0].type).toBe('keypad');
+    await waitFor(() => expect(updateLoadout).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: /Test full sequence/i }));
+    expect(screen.getByRole('dialog', { name: 'Keypad' })).toBeInTheDocument();
+    expect(screen.getByText('Practice only. No stake, loot, or balance changes.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close defense test' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
 });
 
 describe('Slot picker offers custom/community games', () => {
@@ -108,6 +126,7 @@ describe('Slot picker offers custom/community games', () => {
       <MemoryRouter initialEntries={['/security/pick/0']}>
         <Routes>
           <Route path="/security/pick/:slotIndex" element={<GamePickerScreen />} />
+          <Route path="/security" element={<div>SECURITY SCREEN</div>} />
           <Route path="/marketplace" element={<div>MARKETPLACE SCREEN</div>} />
         </Routes>
       </MemoryRouter>
@@ -124,5 +143,24 @@ describe('Slot picker offers custom/community games', () => {
     renderPicker();
     fireEvent.click(await screen.findByText('Browse all'));
     await waitFor(() => expect(screen.getByText('MARKETPLACE SCREEN')).toBeInTheDocument());
+  });
+
+  it('supports search, favorites, continuous difficulty, and saving a built-in game', async () => {
+    renderPicker();
+    fireEvent.click(screen.getByRole('button', { name: 'Arcade' }));
+    const search = screen.getByRole('searchbox', { name: 'Search games' });
+    fireEvent.change(search, { target: { value: 'Tetris' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Tetris to favorites' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select Tetris' }));
+
+    const difficulty = screen.getByRole('slider', { name: /Difficulty/i });
+    fireEvent.change(difficulty, { target: { value: '0.78' } });
+    expect(screen.getByText(/78% · Punishing/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Save lock/i }));
+
+    await waitFor(() => expect(screen.getByText('SECURITY SCREEN')).toBeInTheDocument());
+    expect(usePlayerStore.getState().securityLoadout.modules[0]).toMatchObject({ type: 'tetris', difficulty: .78, name: 'Tetris' });
+    expect(updateLoadout).toHaveBeenCalledTimes(1);
   });
 });

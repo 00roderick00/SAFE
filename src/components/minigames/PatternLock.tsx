@@ -1,244 +1,150 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { MiniGameProps } from '../../types';
-import { generatePatternConfig, scorePatternAttempt } from '../../game/modules';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { RotateCcw } from 'lucide-react';
+import type { MiniGameProps } from '../../types';
+import { scorePatternAttempt } from '../../game/modules';
+import { gameAudio } from '../../utils/gameFeedback';
+import { haptics } from '../../utils/haptics';
+import { MiniGameChrome } from './MiniGameChrome';
+import { createSeededPattern } from './verticalSliceConfig';
 
-export const PatternLock = ({ difficulty, onComplete }: MiniGameProps) => {
-  const config = useMemo(() => generatePatternConfig(difficulty), [difficulty]);
+const VIEW_SIZE = 300;
+
+export const PatternLock = ({ difficulty, seed, onComplete }: MiniGameProps) => {
+  const reducedMotion = useReducedMotion();
+  const config = useMemo(() => {
+    const gridSize = Math.round(3 + 2 * difficulty);
+    const requiredLength = Math.min(gridSize * gridSize - 1, Math.round(4 + 5 * difficulty));
+    const timeLimit = Math.round(20 - 12 * difficulty);
+    return { gridSize, requiredLength, timeLimit, pattern: createSeededPattern(seed || 'pattern-preview', gridSize, requiredLength) };
+  }, [difficulty, seed]);
   const [userPattern, setUserPattern] = useState<number[]>([]);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const patternRef = useRef<number[]>([]);
   const [showPattern, setShowPattern] = useState(true);
+  const [isDrawing, setIsDrawing] = useState(false);
   const [timeLeft, setTimeLeft] = useState(config.timeLimit);
-  const [startTime, setStartTime] = useState<number | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState('Memorize the numbered route.');
+  const [statusTone, setStatusTone] = useState<'neutral' | 'warning' | 'success' | 'failure'>('neutral');
+  const startTimeRef = useRef(0);
+  const completedRef = useRef(false);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const cellSize = VIEW_SIZE / config.gridSize;
 
-  const { gridSize, pattern, timeLimit } = config;
-  const cellSize = 280 / gridSize;
+  const finish = useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    const timeSpent = startTimeRef.current ? Date.now() - startTimeRef.current : 0;
+    const score = scorePatternAttempt(config, patternRef.current, timeSpent);
+    const passed = score >= .65;
+    setStatus(passed ? 'Route accepted. Pattern bolt released.' : score >= .5 ? 'Near miss. The route was only partially matched.' : 'Route rejected. Pattern bolt held.');
+    setStatusTone(passed ? 'success' : score >= .5 ? 'warning' : 'failure');
+    haptics[passed ? 'success' : 'error']();
+    gameAudio.play(passed ? 'crack' : 'fail');
+    window.setTimeout(() => onComplete({ moduleId: 'pattern', moduleType: 'pattern', score, passed, timeSpent }), 240);
+  }, [config, onComplete]);
 
-  // Show pattern briefly, then hide
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setShowPattern(false);
-      setStartTime(Date.now());
-    }, 2000);
+      startTimeRef.current = Date.now();
+      setStatus('Draw or tap the route in the same order.');
+      gameAudio.play('ready');
+    }, reducedMotion ? 900 : 1_700);
+    return () => window.clearTimeout(timer);
+  }, [reducedMotion]);
 
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Countdown timer
   useEffect(() => {
-    if (showPattern || !startTime) return;
-
-    const interval = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      const remaining = Math.max(0, timeLimit - elapsed);
+    if (showPattern || completedRef.current) return;
+    const timer = window.setInterval(() => {
+      const elapsed = (Date.now() - startTimeRef.current) / 1_000;
+      const remaining = Math.max(0, config.timeLimit - elapsed);
       setTimeLeft(remaining);
-
-      if (remaining <= 0) {
-        clearInterval(interval);
-        handleComplete();
-      }
+      if (remaining <= 0) finish();
     }, 100);
+    return () => window.clearInterval(timer);
+  }, [showPattern, config.timeLimit, finish]);
 
-    return () => clearInterval(interval);
-  }, [showPattern, startTime, timeLimit]);
+  const center = (index: number) => ({
+    x: (index % config.gridSize) * cellSize + cellSize / 2,
+    y: Math.floor(index / config.gridSize) * cellSize + cellSize / 2,
+  });
 
-  const handleComplete = useCallback(() => {
-    const timeSpent = startTime ? Date.now() - startTime : 0;
-    const score = scorePatternAttempt(config, userPattern, timeSpent);
-
-    onComplete({
-      moduleId: 'pattern',
-      moduleType: 'pattern',
-      score,
-      passed: score >= 0.65,
-      timeSpent,
-    });
-  }, [config, userPattern, startTime, onComplete]);
-
-  const getCellCenter = (index: number) => {
-    const row = Math.floor(index / gridSize);
-    const col = index % gridSize;
-    return {
-      x: col * cellSize + cellSize / 2,
-      y: row * cellSize + cellSize / 2,
-    };
+  const addNode = (index: number) => {
+    if (showPattern || completedRef.current || patternRef.current.includes(index)) return;
+    const next = [...patternRef.current, index];
+    patternRef.current = next;
+    setUserPattern(next);
+    setStatus(`${next.length} of ${config.requiredLength} nodes connected.`);
+    haptics.selection();
+    gameAudio.play('tick');
+    if (next.length >= config.requiredLength) window.setTimeout(finish, 0);
   };
 
-  const getClosestCell = (x: number, y: number) => {
-    const rect = containerRef.current?.getBoundingClientRect();
+  const closestNode = (clientX: number, clientY: number) => {
+    const rect = boardRef.current?.getBoundingClientRect();
     if (!rect) return -1;
-
-    const relX = x - rect.left;
-    const relY = y - rect.top;
-
-    const col = Math.floor(relX / cellSize);
-    const row = Math.floor(relY / cellSize);
-
-    if (col < 0 || col >= gridSize || row < 0 || row >= gridSize) return -1;
-
-    const index = row * gridSize + col;
-    const center = getCellCenter(index);
-    const distance = Math.sqrt(
-      Math.pow(relX - center.x, 2) + Math.pow(relY - center.y, 2)
-    );
-
-    return distance < cellSize * 0.4 ? index : -1;
+    const x = ((clientX - rect.left) / rect.width) * VIEW_SIZE;
+    const y = ((clientY - rect.top) / rect.height) * VIEW_SIZE;
+    const column = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    if (column < 0 || column >= config.gridSize || row < 0 || row >= config.gridSize) return -1;
+    const index = row * config.gridSize + column;
+    const point = center(index);
+    return Math.hypot(x - point.x, y - point.y) <= cellSize * .43 ? index : -1;
   };
 
-  const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
-    if (showPattern) return;
+  const pathFor = (points: number[]) => points.map((point, index) => {
+    const position = center(point);
+    return `${index === 0 ? 'M' : 'L'} ${position.x} ${position.y}`;
+  }).join(' ');
 
-    setIsDrawing(true);
+  const resetAttempt = () => {
+    patternRef.current = [];
     setUserPattern([]);
-
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const cell = getClosestCell(clientX, clientY);
-
-    if (cell >= 0) {
-      setUserPattern([cell]);
-    }
-  };
-
-  const handleMove = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!isDrawing || showPattern) return;
-
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const cell = getClosestCell(clientX, clientY);
-
-    if (cell >= 0 && !userPattern.includes(cell)) {
-      setUserPattern((prev) => [...prev, cell]);
-    }
-  };
-
-  const handleEnd = () => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
-
-    if (userPattern.length > 0) {
-      handleComplete();
-    }
-  };
-
-  const renderPath = (points: number[], color: string, animated = false) => {
-    if (points.length < 2) return null;
-
-    const pathData = points
-      .map((point, i) => {
-        const center = getCellCenter(point);
-        return `${i === 0 ? 'M' : 'L'} ${center.x} ${center.y}`;
-      })
-      .join(' ');
-
-    return (
-      <motion.path
-        d={pathData}
-        fill="none"
-        stroke={color}
-        strokeWidth={4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        initial={animated ? { pathLength: 0 } : { pathLength: 1 }}
-        animate={{ pathLength: 1 }}
-        transition={{ duration: 0.5 }}
-        style={{
-          filter: `drop-shadow(0 0 6px ${color})`,
-        }}
-      />
-    );
+    setStatus('Route cleared. Start again at the first node.');
+    setStatusTone('neutral');
   };
 
   return (
-    <div className="flex flex-col items-center">
-      {/* Timer */}
-      <div className="mb-4 text-center">
-        {showPattern ? (
-          <p className="text-lg font-display text-primary neon-text-primary">
-            Memorize the pattern...
-          </p>
-        ) : (
-          <p className="text-lg font-display text-warning">
-            {timeLeft.toFixed(1)}s
-          </p>
-        )}
-      </div>
-
-      {/* Pattern Grid */}
+    <MiniGameChrome
+      name="Pattern Lock"
+      objective={`Repeat ${config.requiredLength} nodes in order`}
+      timeLeft={showPattern ? config.timeLimit : timeLeft}
+      progress={{ current: userPattern.length, total: config.requiredLength, label: 'Nodes' }}
+      status={status}
+      statusTone={statusTone}
+      controls={<button className="game-control game-control--wide" onClick={resetAttempt} disabled={showPattern}><RotateCcw size={18} /><span>Clear route</span><kbd>Esc</kbd></button>}
+    >
       <div
-        ref={containerRef}
-        className="relative touch-none select-none"
-        style={{ width: 280, height: 280 }}
-        onMouseDown={handleStart}
-        onMouseMove={handleMove}
-        onMouseUp={handleEnd}
-        onMouseLeave={handleEnd}
-        onTouchStart={handleStart}
-        onTouchMove={handleMove}
-        onTouchEnd={handleEnd}
+        ref={boardRef}
+        className={`pattern-board ${showPattern ? 'pattern-board--memorize' : ''}`}
+        onPointerDown={(event) => { setIsDrawing(true); addNode(closestNode(event.clientX, event.clientY)); event.currentTarget.setPointerCapture(event.pointerId); }}
+        onPointerMove={(event) => { if (isDrawing) addNode(closestNode(event.clientX, event.clientY)); }}
+        onPointerUp={() => setIsDrawing(false)}
+        onKeyDown={(event) => { if (event.key === 'Escape') resetAttempt(); }}
       >
-        {/* SVG for paths */}
-        <svg className="absolute inset-0" width={280} height={280}>
-          {/* Show pattern when learning */}
-          {showPattern && renderPath(pattern, '#00ff88', true)}
-
-          {/* Show user pattern */}
-          {!showPattern && renderPath(userPattern, '#ff00ff')}
+        <svg viewBox={`0 0 ${VIEW_SIZE} ${VIEW_SIZE}`} aria-hidden="true">
+          <motion.path d={pathFor(showPattern ? config.pattern : userPattern)} fill="none" stroke={showPattern ? '#D8FF45' : '#FFAE42'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" initial={reducedMotion ? undefined : { pathLength: 0 }} animate={{ pathLength: 1 }} />
         </svg>
-
-        {/* Grid dots */}
-        {Array.from({ length: gridSize * gridSize }).map((_, index) => {
-          const center = getCellCenter(index);
-          const isInPattern = showPattern && pattern.includes(index);
-          const isInUserPattern = userPattern.includes(index);
-          const patternIndex = showPattern
-            ? pattern.indexOf(index)
-            : userPattern.indexOf(index);
-
+        {Array.from({ length: config.gridSize * config.gridSize }, (_, index) => {
+          const position = center(index);
+          const shownIndex = showPattern ? config.pattern.indexOf(index) : userPattern.indexOf(index);
+          const active = shownIndex >= 0;
           return (
-            <motion.div
+            <button
               key={index}
-              className={`absolute rounded-full flex items-center justify-center ${
-                isInPattern || isInUserPattern
-                  ? 'bg-primary/20'
-                  : 'bg-surface-light'
-              }`}
-              style={{
-                left: center.x - 20,
-                top: center.y - 20,
-                width: 40,
-                height: 40,
-              }}
-              whileTap={{ scale: 0.9 }}
+              type="button"
+              className={`pattern-node ${active ? 'active' : ''}`}
+              style={{ left: `${position.x / VIEW_SIZE * 100}%`, top: `${position.y / VIEW_SIZE * 100}%` }}
+              onClick={(event) => { event.stopPropagation(); addNode(index); }}
+              disabled={showPattern}
+              aria-label={`Pattern node ${index + 1}${active ? `, route position ${shownIndex + 1}` : ''}`}
             >
-              <div
-                className={`w-4 h-4 rounded-full ${
-                  isInPattern
-                    ? 'bg-primary neon-glow-primary'
-                    : isInUserPattern
-                    ? 'bg-accent neon-glow-accent'
-                    : 'bg-text-dim'
-                }`}
-              />
-              {(isInPattern || isInUserPattern) && patternIndex >= 0 && (
-                <span className="absolute text-xs font-display font-bold text-text">
-                  {patternIndex + 1}
-                </span>
-              )}
-            </motion.div>
+              <span>{active ? shownIndex + 1 : ''}</span>
+            </button>
           );
         })}
       </div>
-
-      {/* Instructions */}
-      <p className="mt-4 text-sm text-text-dim text-center">
-        {showPattern
-          ? `Pattern length: ${pattern.length} dots`
-          : userPattern.length > 0
-          ? `Connected: ${userPattern.length} dots`
-          : 'Draw the pattern'}
-      </p>
-    </div>
+    </MiniGameChrome>
   );
 };

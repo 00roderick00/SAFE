@@ -136,7 +136,7 @@ export const ConfirmModal = ({
             flex-1 px-4 py-2 rounded-lg font-medium transition-colors
             ${
               variant === 'danger'
-                ? 'bg-danger text-white hover:bg-danger/80'
+                ? 'bg-danger text-background hover:bg-danger-dim'
                 : 'bg-primary text-background hover:bg-primary-dim'
             }
           `}

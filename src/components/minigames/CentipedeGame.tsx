@@ -52,6 +52,21 @@ export const CentipedeGame = ({ difficulty, onComplete }: CentipedeGameProps) =>
     setTotalSegments(length);
   }, [difficulty]);
 
+  const handleGameEnd = useCallback(() => {
+    if (gameOver) return;
+    setGameOver(true);
+    const timeSpent = Date.now() - startTime.current;
+    const percentKilled = totalSegments > 0 ? score / totalSegments : 0;
+
+    onComplete({
+      moduleId: 'centipede',
+      moduleType: 'centipede',
+      score: percentKilled,
+      passed: percentKilled >= 0.5,
+      timeSpent,
+    });
+  }, [gameOver, score, totalSegments, onComplete]);
+
   // Timer
   useEffect(() => {
     if (gameOver) return;
@@ -65,7 +80,7 @@ export const CentipedeGame = ({ difficulty, onComplete }: CentipedeGameProps) =>
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [gameOver]);
+  }, [gameOver, handleGameEnd]);
 
   // Move centipede
   useEffect(() => {
@@ -101,7 +116,7 @@ export const CentipedeGame = ({ difficulty, onComplete }: CentipedeGameProps) =>
     if (segments.some((s) => s.alive && s.y > GAME_HEIGHT - 60)) {
       handleGameEnd();
     }
-  }, [segments]);
+  }, [segments, handleGameEnd]);
 
   // Move bullets
   useEffect(() => {
@@ -140,22 +155,7 @@ export const CentipedeGame = ({ difficulty, onComplete }: CentipedeGameProps) =>
     if (segments.length > 0 && segments.every((s) => !s.alive)) {
       handleGameEnd();
     }
-  }, [segments]);
-
-  const handleGameEnd = useCallback(() => {
-    if (gameOver) return;
-    setGameOver(true);
-    const timeSpent = Date.now() - startTime.current;
-    const percentKilled = totalSegments > 0 ? score / totalSegments : 0;
-
-    onComplete({
-      moduleId: 'centipede',
-      moduleType: 'centipede',
-      score: percentKilled,
-      passed: percentKilled >= 0.5,
-      timeSpent,
-    });
-  }, [gameOver, score, totalSegments, onComplete]);
+  }, [segments, handleGameEnd]);
 
   const shoot = () => {
     if (gameOver) return;
@@ -244,7 +244,7 @@ export const CentipedeGame = ({ difficulty, onComplete }: CentipedeGameProps) =>
           ←
         </button>
         <button
-          className="px-8 py-3 bg-danger rounded-lg active:bg-danger/80 text-white font-bold"
+          className="px-8 py-3 bg-danger rounded-lg active:bg-danger-dim text-background font-bold"
           onTouchStart={shoot}
           onClick={shoot}
         >

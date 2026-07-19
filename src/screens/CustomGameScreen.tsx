@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Sparkles, CheckCircle, XCircle, Loader2, Store, Gauge } from 'lucide-react';
+import { ArrowLeft, Plus, Sparkles, CheckCircle, XCircle, Loader2, Store, Gauge, Gamepad2, Lightbulb } from 'lucide-react';
 import { api, type CustomGame, type GenerateGameResponse } from '../services/api';
 import { useSession } from '../services/useSession';
 import { sanitizeUserText } from '../utils/sanitize';
@@ -140,6 +140,7 @@ export const CustomGameScreen = () => {
             <button
               onClick={() => navigate('/security')}
               className="p-2 -ml-2 text-text-dim hover:text-text"
+              aria-label="Back to defense configuration"
             >
               <ArrowLeft size={24} />
             </button>
@@ -324,7 +325,7 @@ export const CustomGameScreen = () => {
 
         {games.length === 0 ? (
           <div className="text-center py-12">
-            <span className="text-6xl block mb-4">🎮</span>
+            <Gamepad2 size={48} className="mx-auto mb-4 text-primary" aria-hidden="true" />
             <p className="text-text-dim">Nothing yet.</p>
             <p className="text-text-dim text-sm mt-1">Tap Build to make your first AI-designed game.</p>
           </div>
@@ -386,8 +387,8 @@ const CustomGameRow = ({ game }: { game: CustomGame }) => {
             </p>
           )}
           {game.calibration_stats.suggestion && (
-            <p className="text-xs text-text pt-2">
-              💡 {game.calibration_stats.suggestion}
+            <p className="text-xs text-text pt-2 flex items-start gap-2">
+              <Lightbulb size={14} className="text-warning shrink-0" aria-hidden="true" /> {game.calibration_stats.suggestion}
             </p>
           )}
         </div>
@@ -431,7 +432,7 @@ const PreviewBox = ({ preview, band }: { preview: PreviewState; band: { min: num
                 : 'Too easy for the live band.'}
           </p>
           {!inBand && preview.suggestion && (
-            <p className="text-xs text-text mt-1">💡 {preview.suggestion}</p>
+            <p className="text-xs text-text mt-1 flex items-start gap-2"><Lightbulb size={14} className="text-warning shrink-0" aria-hidden="true" /> {preview.suggestion}</p>
           )}
         </>
       )}

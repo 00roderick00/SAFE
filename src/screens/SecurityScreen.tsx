@@ -1,260 +1,147 @@
-// Security Screen - Premium Vault Style
-// Features: Serif typography, vault icon, lock slots, clean stats
-
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowLeft, TrendingUp, TrendingDown, Shield, ChevronRight, Sparkles, Store } from 'lucide-react';
-import { usePlayerStore } from '../store/playerStore';
+import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  ChevronRight,
+  FlaskConical,
+  Layers3,
+  Play,
+  Shield,
+  Sparkles,
+  Store,
+  TestTube2,
+  X,
+} from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { GameEmblem, GameIcon, StateBadge, StateFrame } from '../components/game';
+import { MiniGameHost } from '../components/minigames';
+import { getCatalogMeta, getDefenseMix } from '../game/catalog';
 import { calculateEconomyStats } from '../game/economy';
-import { MODULE_CONFIG } from '../game/constants';
+import { api } from '../services/api';
+import { supabase } from '../services/supabaseClient';
+import { usePlayerStore } from '../store/playerStore';
+import type { MiniGameResult } from '../types';
 import { haptics } from '../utils/haptics';
 
-// Vault Icon - 3D metallic style
-const VaultIcon = () => (
-  <div className="vault-icon">
-    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-      {/* Safe body */}
-      <rect x="4" y="8" width="40" height="32" rx="4" fill="#2a2a2a" stroke="#3a3a3a" strokeWidth="2" />
-      {/* Inner panel */}
-      <rect x="8" y="12" width="32" height="24" rx="2" fill="#1a1a1a" />
-      {/* Dial */}
-      <circle cx="24" cy="24" r="10" fill="#2a2a2a" stroke="#D7FF5D" strokeWidth="2" />
-      <circle cx="24" cy="24" r="6" fill="#1a1a1a" />
-      <circle cx="24" cy="24" r="2" fill="#D7FF5D" />
-      {/* Dial marks */}
-      <line x1="24" y1="16" x2="24" y2="18" stroke="#D7FF5D" strokeWidth="1.5" />
-      <line x1="24" y1="30" x2="24" y2="32" stroke="#D7FF5D" strokeWidth="1.5" />
-      <line x1="16" y1="24" x2="18" y2="24" stroke="#D7FF5D" strokeWidth="1.5" />
-      <line x1="30" y1="24" x2="32" y2="24" stroke="#D7FF5D" strokeWidth="1.5" />
-      {/* Handle */}
-      <rect x="36" y="20" width="4" height="8" rx="1" fill="#3a3a3a" />
-    </svg>
-  </div>
-);
+const LOCK_ROLES = [
+  { label: 'Perimeter', description: 'First contact: set the pace and punish rushed attackers.' },
+  { label: 'Pressure gate', description: 'Mid-sequence: switch skill type to break attacker rhythm.' },
+  { label: 'Deadbolt', description: 'Final barrier: demand precision after fatigue has built.' },
+];
 
 export const SecurityScreen = () => {
   const navigate = useNavigate();
-  const { securityLoadout, safeBalance, insurancePolicy } = usePlayerStore();
+  const [searchParams] = useSearchParams();
+  const { securityLoadout, safeBalance, insurancePolicy, reorderSecurityModules } = usePlayerStore();
+  const [now] = useState(() => Date.now());
+  const [testIndex, setTestIndex] = useState<number | null>(() => searchParams.get('test') === 'sequence' ? 0 : null);
+  const [sequenceTest, setSequenceTest] = useState(() => searchParams.get('test') === 'sequence');
+  const [testResults, setTestResults] = useState<MiniGameResult[]>([]);
   const stats = calculateEconomyStats(safeBalance, securityLoadout);
-  const isInsured = insurancePolicy && Date.now() < insurancePolicy.expiresAt;
+  const insured = Boolean(insurancePolicy && now < insurancePolicy.expiresAt);
+  const mix = getDefenseMix(securityLoadout.modules.map((module) => module.type));
+  const currentTestModule = testIndex === null ? null : securityLoadout.modules[testIndex];
 
-  const handleSlotClick = (index: number) => {
-    haptics.medium();
-    navigate(`/security/pick/${index}`);
+  const persistLoadout = async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) await api.updateLoadout(data.session.user.id, usePlayerStore.getState().securityLoadout);
+    } catch {
+      // Reorder remains available for offline practice.
+    }
   };
 
-  const getModuleConfig = (type: string) => {
-    return MODULE_CONFIG[type as keyof typeof MODULE_CONFIG] || MODULE_CONFIG.custom;
+  const moveLock = (from: number, to: number) => {
+    haptics.selection();
+    reorderSecurityModules(from, to);
+    void persistLoadout();
   };
 
-  const getDifficultyLabel = (difficulty: number) => {
-    if (difficulty < 0.33) return 'Easy';
-    if (difficulty < 0.66) return 'Medium';
-    return 'Hard';
+  const startSingleTest = (index: number) => {
+    setSequenceTest(false);
+    setTestResults([]);
+    setTestIndex(index);
+  };
+
+  const startSequenceTest = () => {
+    setSequenceTest(true);
+    setTestResults([]);
+    setTestIndex(0);
+  };
+
+  const handleTestComplete = (result: MiniGameResult) => {
+    setTestResults((items) => [...items, result]);
+    haptics[result.passed ? 'success' : 'error']();
+    if (sequenceTest && testIndex !== null && testIndex < securityLoadout.modules.length - 1) {
+      setTestIndex(testIndex + 1);
+    } else {
+      window.setTimeout(() => setTestIndex(null), 650);
+    }
   };
 
   return (
-    <div className="min-h-screen pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm px-4 py-4">
-        <div className="flex items-center">
-          <button
-            onClick={() => {
-              haptics.light();
-              navigate('/');
-            }}
-            className="p-2 -ml-2 text-text-dim hover:text-text"
-          >
-            <ArrowLeft size={24} />
-          </button>
-          <h1 className="ml-2 text-lg font-semibold">Your Vault</h1>
-        </div>
+    <div className="defense-screen">
+      <header className="tactical-header defense-header">
+        <button className="icon-button" onClick={() => navigate('/')} aria-label="Back to vault"><ArrowLeft size={20} /></button>
+        <div><p className="eyebrow">VAULT ENGINEERING</p><h1>Defense array</h1></div>
+        <StateBadge state={stats.securityScore >= 35 ? 'secure' : 'warning'} label={`${Math.round(stats.securityScore)} strength`} compact />
       </header>
 
-      <div className="px-4 py-6">
-        {/* Vault Hero Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="vault-container mb-6"
-        >
-          <VaultIcon />
+      <main>
+        <section className="defense-summary">
+          <div className="defense-summary__score"><Shield size={30} /><span>SECURITY STRENGTH</span><strong>{Math.round(stats.securityScore)}</strong><small>{stats.securityScore >= 65 ? 'Hardened' : stats.securityScore >= 35 ? 'Operational' : 'Vulnerable'}</small></div>
+          <div className="defense-summary__intel"><span>Potential breach loss <b>{Math.round(stats.potentialLoot).toLocaleString()} TK</b></span><span>Insurance <b>{insured ? 'Active' : 'Not active'}</b></span><span>Skill coverage <b>{mix.covered.length} / 5</b></span></div>
+        </section>
 
-          {/* Security Score with Serif font */}
-          <div className="text-center">
-            <p className="section-label mb-2">Security Score</p>
-            <p className="vault-score">{Math.round(stats.securityScore)}</p>
-          </div>
+        <section className="defense-mix" aria-label="Defensive mix analysis">
+          <div className="section-title-row"><div><p className="eyebrow">DEFENSIVE MIX</p><h2>Coverage analysis</h2></div><Layers3 size={20} /></div>
+          <div className="mix-tags">{mix.covered.map((skill) => <StateBadge key={skill} state="secure" label={`${skill} covered`} compact />)}{mix.gaps.map((skill) => <StateBadge key={skill} state="warning" label={`${skill} gap`} compact />)}</div>
+          <p>{mix.gaps.length ? `Add ${mix.gaps.slice(0, 2).join(' or ')} to force attackers to switch skills.` : 'Balanced mix: every attacker skill is challenged.'}</p>
+        </section>
 
-          {/* Progress bar */}
-          <div className="mt-4 mb-2">
-            <div className="progress-bar">
-              <div
-                className="progress-bar-fill neon"
-                style={{ width: `${stats.securityScore}%` }}
-              />
-            </div>
-          </div>
+        <section className="defense-lock-list" aria-label="Equipped lock sequence">
+          <div className="section-title-row"><div><p className="eyebrow">3-LOCK SEQUENCE</p><h2>Equipped defenses</h2></div><button className="text-button" onClick={startSequenceTest}><TestTube2 size={16} /> Test full sequence</button></div>
+          {securityLoadout.modules.map((module, index) => {
+            const meta = getCatalogMeta(module.type);
+            const role = LOCK_ROLES[index];
+            return (
+              <motion.article key={module.id} className="equipped-lock" layout>
+                <div className="equipped-lock__index"><span>0{index + 1}</span><i /></div>
+                <GameEmblem type={module.type} />
+                <div className="equipped-lock__copy"><p className="eyebrow">{role.label}</p><h3>{module.name}</h3><span>{role.description}</span><div>{meta.skills.map((skill) => <b key={skill}>{skill}</b>)}<b>{Math.round(module.difficulty * 100)}% difficulty</b></div></div>
+                <div className="equipped-lock__actions">
+                  <button onClick={() => startSingleTest(index)} aria-label={`Test ${module.name}`}><Play size={17} /><span>Test</span></button>
+                  <button onClick={() => navigate(`/security/pick/${index}`)} aria-label={`Replace ${module.name}`}><GameIcon type={module.type} size={17} /><span>Replace</span></button>
+                  <button onClick={() => moveLock(index, index - 1)} disabled={index === 0} aria-label={`Move ${module.name} earlier`}><ArrowUp size={17} /></button>
+                  <button onClick={() => moveLock(index, index + 1)} disabled={index === securityLoadout.modules.length - 1} aria-label={`Move ${module.name} later`}><ArrowDown size={17} /></button>
+                </div>
+              </motion.article>
+            );
+          })}
+        </section>
 
-          <p className="text-center text-text-dim text-xs">
-            {stats.securityScore > 60
-              ? 'Strong protection against attacks'
-              : stats.securityScore > 30
-              ? 'Moderate protection'
-              : 'Vulnerable - upgrade your locks'}
-          </p>
-        </motion.div>
+        <section className="defense-tools">
+          <button onClick={() => navigate('/custom-games')}><span><Sparkles size={19} /><b>Build a game</b><small>Create a custom defense with the existing verified runtime.</small></span><ChevronRight /></button>
+          <button onClick={() => navigate('/marketplace')}><span><Store size={19} /><b>Browse community games</b><small>Equip a calibrated creator game and preserve royalties.</small></span><ChevronRight /></button>
+        </section>
 
-        {/* Lock Slots */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-6"
-        >
-          <p className="heading-serif text-lg mb-4 text-center">Your Locks</p>
+        <StateFrame state={insured ? 'secure' : 'warning'} className="insurance-link" label="Insurance state"><Shield size={22} /><div><p className="eyebrow">INSURANCE</p><strong>{insured ? `${Math.round((insurancePolicy?.coverage ?? 0) * 100)}% coverage active` : 'No active loss coverage'}</strong></div><button className="text-button" onClick={() => navigate('/insurance')}>{insured ? 'Manage' : 'Review plans'} <ChevronRight size={15} /></button></StateFrame>
+      </main>
 
-          <div className="lock-slots">
-            {securityLoadout.modules.map((module, index) => {
-              const config = getModuleConfig(module.type);
-              return (
-                <motion.button
-                  key={module.id}
-                  className="lock-slot"
-                  onClick={() => handleSlotClick(index)}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <div className="lock-slot-icon">{config.icon}</div>
-                  <div className="lock-slot-name">{config.name}</div>
-                  <div className="lock-slot-difficulty">
-                    {getDifficultyLabel(module.difficulty)}
-                  </div>
-                </motion.button>
-              );
-            })}
-          </div>
-
-          <p className="text-center text-text-dim text-xs mt-4">
-            Tap a lock to change or test it
-          </p>
-
-          {/* Custom-game entry points: build your own AI game or equip a
-              community one directly onto a slot. */}
-          <div className="grid grid-cols-2 gap-3 mt-5">
-            <button
-              onClick={() => {
-                haptics.light();
-                navigate('/custom-games');
-              }}
-              className="card-bordered p-3 flex flex-col items-start gap-1 hover:border-primary/50 transition-colors"
-            >
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <Sparkles size={16} className="text-primary" />
-              </div>
-              <span className="text-sm font-medium mt-1">Build a game</span>
-              <span className="text-xs text-text-dim">Design one with AI</span>
-            </button>
-            <button
-              onClick={() => {
-                haptics.light();
-                navigate('/marketplace');
-              }}
-              className="card-bordered p-3 flex flex-col items-start gap-1 hover:border-primary/50 transition-colors"
-            >
-              <div className="w-8 h-8 rounded-full bg-neon/10 flex items-center justify-center">
-                <Store size={16} className="text-neon" />
-              </div>
-              <span className="text-sm font-medium mt-1">Browse community games</span>
-              <span className="text-xs text-text-dim">Equip a live creation</span>
-            </button>
-          </div>
-        </motion.div>
-
-        {/* Stats Cards */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="card-bordered overflow-hidden mb-6"
-        >
-          <div className="stat-row px-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-profit/10 flex items-center justify-center">
-                <TrendingUp size={16} className="text-profit" />
-              </div>
-              <span className="stat-label">Est. Daily Income</span>
-            </div>
-            <span className="stat-value text-profit">
-              +${stats.estimatedFailIncomePerDay}
-            </span>
-          </div>
-
-          <div className="stat-row px-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-loss/10 flex items-center justify-center">
-                <TrendingDown size={16} className="text-loss" />
-              </div>
-              <span className="stat-label">Est. Daily Risk</span>
-            </div>
-            <span className="stat-value text-loss">
-              -${stats.estimatedBreachRiskPerDay}
-            </span>
-          </div>
-
-          <div className="stat-row px-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-surface-elevated flex items-center justify-center">
-                <Shield size={16} className="text-text-dim" />
-              </div>
-              <span className="stat-label">Insurance</span>
-            </div>
-            <span className={`stat-value ${isInsured ? 'text-profit' : 'text-text-dim'}`}>
-              {isInsured ? 'Active' : 'None'}
-            </span>
-          </div>
-        </motion.div>
-
-        {/* Insurance Link */}
-        <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="w-full card-bordered p-4 flex items-center justify-between mb-4"
-          onClick={() => {
-            haptics.light();
-            navigate('/insurance');
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-neon/10 flex items-center justify-center">
-              <Shield size={20} className="text-neon" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-sm">
-                {isInsured ? 'Manage Insurance' : 'Get Insurance'}
-              </p>
-              <p className="text-text-dim text-xs">
-                {isInsured
-                  ? `${Math.round((insurancePolicy?.coverage || 0) * 100)}% coverage active`
-                  : 'Protect against losses'}
-              </p>
-            </div>
-          </div>
-          <ChevronRight size={20} className="text-text-dim" />
-        </motion.button>
-
-        {/* Tips */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="text-center py-4"
-        >
-          <p className="text-text-dim text-sm">
-            Mix different game types to keep attackers guessing
-          </p>
-        </motion.div>
-      </div>
+      <AnimatePresence>
+        {currentTestModule && (
+          <motion.div className="defense-test-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <section className="defense-test-modal" role="dialog" aria-modal="true" aria-labelledby="defense-test-title">
+              <header><div><p className="eyebrow">{sequenceTest ? `SEQUENCE ${testIndex! + 1} / ${securityLoadout.modules.length}` : 'INDIVIDUAL LOCK TEST'}</p><h2 id="defense-test-title">{currentTestModule.name}</h2></div><button className="icon-button" onClick={() => setTestIndex(null)} aria-label="Close defense test"><X size={20} /></button></header>
+              {sequenceTest && <div className="test-sequence-rail">{securityLoadout.modules.map((module, index) => <span key={module.id} className={index < testResults.length ? testResults[index]?.passed ? 'passed' : 'failed' : index === testIndex ? 'active' : ''}><GameIcon type={module.type} size={16} /> Lock {index + 1}</span>)}</div>}
+              <div className="defense-test-playfield"><MiniGameHost key={`${currentTestModule.id}-${testIndex}`} moduleType={currentTestModule.type} moduleId={`defense-test-${currentTestModule.id}`} difficulty={currentTestModule.difficulty} seed={`defense-test-${currentTestModule.id}`} config={currentTestModule.customConfig?.config} mode={currentTestModule.customConfig?.mode} onComplete={handleTestComplete} onFail={handleTestComplete} /></div>
+              <p className="test-note"><FlaskConical size={15} /> Practice only. No stake, loot, or balance changes.</p>
+            </section>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

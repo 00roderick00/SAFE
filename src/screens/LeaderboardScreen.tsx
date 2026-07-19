@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, RefreshCw, Trophy, Target, Shield } from 'lucide-react';
+import { ArrowLeft, Medal, RefreshCw, Trophy, Target, Shield } from 'lucide-react';
 import { useSocialStore, LeaderboardEntry } from '../store/socialStore';
 import { usePlayerStore } from '../store/playerStore';
 
@@ -76,9 +76,7 @@ export const LeaderboardScreen = () => {
   };
 
   const getRankIcon = (rank: number) => {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
+    if (rank <= 3) return <Medal size={19} aria-hidden="true" />;
     return null;
   };
 
@@ -91,6 +89,7 @@ export const LeaderboardScreen = () => {
             <button
               onClick={() => navigate('/')}
               className="p-2 -ml-2 text-text-dim hover:text-text"
+              aria-label="Back to vault"
             >
               <ArrowLeft size={24} />
             </button>
@@ -100,6 +99,7 @@ export const LeaderboardScreen = () => {
             onClick={handleRefresh}
             disabled={isRefreshing}
             className="p-2 text-text-dim hover:text-text"
+            aria-label="Refresh leaderboard"
           >
             <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
           </button>

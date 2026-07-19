@@ -108,10 +108,10 @@ export const ActivityFeed = memo(() => {
 
   const defenseItems: ActivityItem[] = defenseHistory.map((defense) => ({
     id: defense.id,
-    type: (defense.success ? 'defense_fail' : 'defense_success') as ActivityItem['type'],
-    title: defense.success ? 'Safe breached' : 'Defended attack',
+    type: (defense.success ? 'defense_success' : 'defense_fail') as ActivityItem['type'],
+    title: defense.success ? 'Defended attack' : 'Safe breached',
     subtitle: `by ${defense.attackerName}`,
-    amount: defense.success ? -(defense.lootLost - defense.insurancePayout) : defense.feeEarned,
+    amount: defense.success ? defense.feeEarned : -(defense.lootLost - defense.insurancePayout),
     timestamp: defense.timestamp,
   }));
 

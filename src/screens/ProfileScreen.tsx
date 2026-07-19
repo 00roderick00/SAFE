@@ -1,12 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Edit2, Trophy, Target, Shield, Star, Lock } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bot,
+  Crown,
+  Edit2,
+  Fingerprint,
+  Gauge,
+  Lock,
+  Radio,
+  Shield,
+  Sparkles,
+  Star,
+  Target,
+  Trophy,
+} from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { useSocialStore, AVAILABLE_ACHIEVEMENTS } from '../store/socialStore';
 import { calculateSecurityScore } from '../game/economy';
 
-const AVATARS = ['🦊', '🐺', '🦁', '🐯', '🐻', '🐼', '🐨', '🐸', '🦉', '🦅', '🐉', '👹'];
+const AVATARS = [
+  { id: 'shield', label: 'Vault guardian', Icon: Shield },
+  { id: 'target', label: 'Target specialist', Icon: Target },
+  { id: 'bot', label: 'Tactical operator', Icon: Bot },
+  { id: 'dial', label: 'Dial technician', Icon: Gauge },
+  { id: 'signal', label: 'Signal analyst', Icon: Radio },
+  { id: 'fingerprint', label: 'Identity specialist', Icon: Fingerprint },
+  { id: 'crown', label: 'Master infiltrator', Icon: Crown },
+  { id: 'spark', label: 'System architect', Icon: Sparkles },
+];
+
+const ACHIEVEMENT_ICONS = {
+  'first-heist': Target,
+  'safe-cracker': Lock,
+  'master-thief': Crown,
+  'iron-wall': Shield,
+  fortress: Shield,
+  millionaire: Trophy,
+  'security-expert': Gauge,
+  'perfect-heist': Star,
+} as const;
 
 export const ProfileScreen = () => {
   const navigate = useNavigate();
@@ -27,17 +61,21 @@ export const ProfileScreen = () => {
   } = usePlayerStore();
 
   const { achievements, checkAchievements } = useSocialStore();
-  const [avatar, setAvatar] = useState(AVATARS[0]);
+  const [avatar, setAvatar] = useState(AVATARS[0].id);
 
   const securityScore = calculateSecurityScore(securityLoadout);
 
-  // Check achievements on mount
-  checkAchievements({
-    heists: successfulHeists,
-    defenses: successfulDefenses,
-    balance: safeBalance,
-    score: securityScore,
-  });
+  useEffect(() => {
+    checkAchievements({
+      heists: successfulHeists,
+      defenses: successfulDefenses,
+      balance: safeBalance,
+      score: securityScore,
+    });
+  }, [checkAchievements, safeBalance, securityScore, successfulDefenses, successfulHeists]);
+
+  const selectedAvatar = AVATARS.find((item) => item.id === avatar) ?? AVATARS[0];
+  const AvatarIcon = selectedAvatar.Icon;
 
   const handleSaveName = () => {
     if (tempUsername.trim()) {
@@ -63,6 +101,7 @@ export const ProfileScreen = () => {
           <button
             onClick={() => navigate('/')}
             className="p-2 -ml-2 text-text-dim hover:text-text"
+            aria-label="Back to vault"
           >
             <ArrowLeft size={24} />
           </button>
@@ -82,8 +121,9 @@ export const ProfileScreen = () => {
             <button
               onClick={() => setIsPickingAvatar(true)}
               className="w-20 h-20 bg-surface-light rounded-2xl flex items-center justify-center text-4xl hover:bg-surface-light/80 transition-colors"
+              aria-label={`Change avatar. Current avatar: ${selectedAvatar.label}`}
             >
-              {avatar}
+              <AvatarIcon size={36} aria-hidden="true" />
             </button>
 
             {/* Name & Balance */}
@@ -115,6 +155,7 @@ export const ProfileScreen = () => {
                       setIsEditingName(true);
                     }}
                     className="p-1 text-text-dim hover:text-text"
+                    aria-label="Edit callsign"
                   >
                     <Edit2 size={14} />
                   </button>
@@ -143,20 +184,22 @@ export const ProfileScreen = () => {
             >
               <h3 className="text-lg font-semibold mb-4 text-center">Choose Avatar</h3>
               <div className="grid grid-cols-4 gap-3">
-                {AVATARS.map((a) => (
+                {AVATARS.map((option) => (
                   <button
-                    key={a}
+                    key={option.id}
                     onClick={() => {
-                      setAvatar(a);
+                      setAvatar(option.id);
                       setIsPickingAvatar(false);
                     }}
                     className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl transition-all ${
-                      avatar === a
+                      avatar === option.id
                         ? 'bg-primary/20 border-2 border-primary'
                         : 'bg-surface-light hover:bg-surface-light/80'
                     }`}
+                    aria-label={`Use ${option.label} avatar`}
+                    aria-pressed={avatar === option.id}
                   >
-                    {a}
+                    <option.Icon size={25} aria-hidden="true" />
                   </button>
                 ))}
               </div>
@@ -195,6 +238,7 @@ export const ProfileScreen = () => {
           <div className="grid grid-cols-4 gap-3">
             {AVAILABLE_ACHIEVEMENTS.map((achievement) => {
               const unlocked = achievements.some((a) => a.id === achievement.id);
+              const AchievementIcon = ACHIEVEMENT_ICONS[achievement.id as keyof typeof ACHIEVEMENT_ICONS] ?? Trophy;
               return (
                 <div
                   key={achievement.id}
@@ -204,8 +248,9 @@ export const ProfileScreen = () => {
                       : 'bg-surface-light opacity-50'
                   }`}
                   title={achievement.description}
+                  aria-label={`${achievement.name}: ${unlocked ? 'unlocked' : 'locked'}. ${achievement.description}`}
                 >
-                  <span className="text-2xl mb-1">{unlocked ? achievement.icon : '🔒'}</span>
+                  <span className="mb-1" aria-hidden="true">{unlocked ? <AchievementIcon size={23} /> : <Lock size={23} />}</span>
                   <span className="text-[10px] text-text-dim leading-tight">{achievement.name}</span>
                 </div>
               );

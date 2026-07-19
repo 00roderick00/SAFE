@@ -59,11 +59,12 @@ export const AuthScreen = () => {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="card-clean p-4 space-y-3">
-            <label className="block text-xs uppercase tracking-wide text-text-dim">
+            <label htmlFor="safe-auth-email" className="block text-xs uppercase tracking-wide text-text-dim">
               Email
             </label>
             <input
               type="email"
+              id="safe-auth-email"
               required
               autoFocus
               value={email}

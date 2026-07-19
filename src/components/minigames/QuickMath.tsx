@@ -22,6 +22,62 @@ const OP_MAP: Record<string, '+' | '-' | '*' | '/'> = {
   div: '/',
 };
 
+function createProblem(
+  difficulty: number,
+  allowedOps: ('+' | '-' | '*' | '/')[],
+  allowNegatives: boolean,
+): Problem {
+  const maxNum = 5 + Math.floor(difficulty * 15);
+  const op = allowedOps[Math.floor(Math.random() * allowedOps.length)];
+  let a: number;
+  let b: number;
+  let answer: number;
+
+  switch (op) {
+    case '+':
+      a = Math.floor(Math.random() * maxNum) + 1;
+      b = Math.floor(Math.random() * maxNum) + 1;
+      answer = a + b;
+      break;
+    case '-':
+      if (allowNegatives) {
+        a = Math.floor(Math.random() * maxNum) + 1;
+        b = Math.floor(Math.random() * maxNum) + 1;
+      } else {
+        a = Math.floor(Math.random() * maxNum) + 5;
+        b = Math.floor(Math.random() * Math.min(a, maxNum)) + 1;
+      }
+      answer = a - b;
+      break;
+    case '*':
+      a = Math.floor(Math.random() * 10) + 1;
+      b = Math.floor(Math.random() * 10) + 1;
+      answer = a * b;
+      break;
+    case '/':
+      b = Math.floor(Math.random() * 9) + 2;
+      answer = Math.floor(Math.random() * 10) + 1;
+      a = b * answer;
+      break;
+    default:
+      a = 1;
+      b = 1;
+      answer = 2;
+  }
+
+  const wrongOptions = new Set<number>();
+  while (wrongOptions.size < 3) {
+    const wrong = answer + Math.floor(Math.random() * 10) - 5;
+    if (wrong !== answer && (allowNegatives || wrong > 0)) wrongOptions.add(wrong);
+  }
+
+  return {
+    question: `${a} ${op} ${b} = ?`,
+    answer,
+    options: [answer, ...wrongOptions].sort(() => Math.random() - 0.5),
+  };
+}
+
 export const QuickMath = ({ difficulty, config, onComplete }: MiniGameProps) => {
   const cfg = (config ?? {}) as QuickMathConfig;
   const targetCount = cfg.problemCount;
@@ -35,9 +91,13 @@ export const QuickMath = ({ difficulty, config, onComplete }: MiniGameProps) => 
     return (difficulty > 0.5 ? ['+', '-', '*'] : ['+', '-']) as ('+' | '-' | '*' | '/')[];
   }, [cfg.operations, difficulty]);
 
-  const [problem, setProblem] = useState<Problem | null>(null);
+  const [problem, setProblem] = useState<Problem>(() => createProblem(
+    difficulty,
+    allowedOps,
+    cfg.allowNegatives === true,
+  ));
   const [score, setScore] = useState(0);
-  const [totalProblems, setTotalProblems] = useState(0);
+  const [totalProblems, setTotalProblems] = useState(1);
   const [timeLeft, setTimeLeft] = useState(cfg.timeLimit ?? 20);
   const [gameOver, setGameOver] = useState(false);
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
@@ -45,87 +105,9 @@ export const QuickMath = ({ difficulty, config, onComplete }: MiniGameProps) => 
   useEffect(() => { startTime.current = Date.now(); }, []);
 
   const generateProblem = useCallback(() => {
-    const maxNum = 5 + Math.floor(difficulty * 15);
-    const op = allowedOps[Math.floor(Math.random() * allowedOps.length)];
-    const allowNeg = cfg.allowNegatives === true;
-
-    let a: number, b: number, answer: number;
-
-    switch (op) {
-      case '+':
-        a = Math.floor(Math.random() * maxNum) + 1;
-        b = Math.floor(Math.random() * maxNum) + 1;
-        answer = a + b;
-        break;
-      case '-':
-        // With allowNegatives=true, don't constrain a >= b — the
-        // answer may be negative. Otherwise ensure a >= b.
-        if (allowNeg) {
-          a = Math.floor(Math.random() * maxNum) + 1;
-          b = Math.floor(Math.random() * maxNum) + 1;
-        } else {
-          a = Math.floor(Math.random() * maxNum) + 5;
-          b = Math.floor(Math.random() * Math.min(a, maxNum)) + 1;
-        }
-        answer = a - b;
-        break;
-      case '*':
-        a = Math.floor(Math.random() * 10) + 1;
-        b = Math.floor(Math.random() * 10) + 1;
-        answer = a * b;
-        break;
-      case '/':
-        // Force integer division: pick a divisor and multiplier
-        // so the answer stays whole.
-        b = Math.floor(Math.random() * 9) + 2;
-        answer = Math.floor(Math.random() * 10) + 1;
-        a = b * answer;
-        break;
-      default:
-        a = 1;
-        b = 1;
-        answer = 2;
-    }
-
-    // Generate wrong options
-    const wrongOptions = new Set<number>();
-    while (wrongOptions.size < 3) {
-      const wrong = answer + Math.floor(Math.random() * 10) - 5;
-      if (wrong !== answer && wrong > 0) {
-        wrongOptions.add(wrong);
-      }
-    }
-
-    const options = [answer, ...Array.from(wrongOptions)]
-      .sort(() => Math.random() - 0.5);
-
-    setProblem({
-      question: `${a} ${op} ${b} = ?`,
-      answer,
-      options,
-    });
+    setProblem(createProblem(difficulty, allowedOps, cfg.allowNegatives === true));
     setTotalProblems((t) => t + 1);
-  }, [difficulty]);
-
-  // Initialize first problem
-  useEffect(() => {
-    generateProblem();
-  }, []);
-
-  // Timer
-  useEffect(() => {
-    if (gameOver) return;
-    const timer = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          handleGameEnd();
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [gameOver]);
+  }, [allowedOps, cfg.allowNegatives, difficulty]);
 
   const handleGameEnd = useCallback(() => {
     if (gameOver) return;
@@ -141,6 +123,21 @@ export const QuickMath = ({ difficulty, config, onComplete }: MiniGameProps) => 
       timeSpent,
     });
   }, [gameOver, score, totalProblems, onComplete]);
+
+  // Timer
+  useEffect(() => {
+    if (gameOver) return;
+    const timer = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          handleGameEnd();
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [gameOver, handleGameEnd]);
 
   const handleAnswer = (selectedAnswer: number) => {
     if (gameOver || !problem) return;

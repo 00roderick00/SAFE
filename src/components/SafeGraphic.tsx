@@ -1,198 +1,175 @@
-// Safe Graphic Component - Shows your vault with balance inside
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
+import { AlertTriangle, ShieldCheck, Wrench } from 'lucide-react';
+import type { SecurityModule } from '../types';
+import { GameIcon } from './game';
+
+export type VaultState = 'secure' | 'exposed' | 'attacking' | 'breached' | 'recovering';
 
 interface SafeGraphicProps {
   size?: number;
+  state?: VaultState;
   isVulnerable?: boolean;
   isBeingAttacked?: boolean;
   balance?: number;
+  locks?: SecurityModule[];
+  onLockSelect?: (index: number) => void;
 }
 
-// Format balance for display inside safe
 const formatBalance = (amount: number): string => {
-  if (amount >= 1000000) return `${(amount / 1000000).toFixed(1)}M`;
-  if (amount >= 1000) return `${(amount / 1000).toFixed(1)}K`;
+  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `${(amount / 1_000).toFixed(1)}K`;
   return amount.toLocaleString();
+};
+const STATE_LABELS: Record<VaultState, string> = {
+  secure: 'Vault secure',
+  exposed: 'Vault exposed to attacks',
+  attacking: 'Vault currently under attack',
+  breached: 'Vault breached',
+  recovering: 'Vault recovering',
 };
 
 export const SafeGraphic = ({
-  size = 200,
+  size = 320,
+  state: explicitState,
   isVulnerable = false,
   isBeingAttacked = false,
-  balance
+  balance,
+  locks = [],
+  onLockSelect,
 }: SafeGraphicProps) => {
-  const accentColor = isVulnerable ? '#FF5000' : '#D7FF5D';
-  const bgColor = isVulnerable ? '#1a1212' : '#121212';
+  const reduceMotion = useReducedMotion();
+  const state: VaultState = explicitState ?? (isBeingAttacked ? 'attacking' : isVulnerable ? 'exposed' : 'secure');
+  const secure = state === 'secure';
+  const breached = state === 'breached';
+  const stateColor = secure ? '#D8FF45' : state === 'recovering' || state === 'exposed' ? '#FFAE42' : '#FF5B32';
+  const dialMotion = reduceMotion || secure || breached ? 0 : state === 'attacking' ? 360 : 90;
 
   return (
-    <motion.div
-      className="relative"
-      style={{ width: size, height: size }}
-      animate={isBeingAttacked ? { x: [0, -2, 2, -2, 2, 0] } : {}}
-      transition={{ duration: 0.5, repeat: isBeingAttacked ? Infinity : 0, repeatDelay: 0.5 }}
+    <figure
+      className={`tactical-vault tactical-vault--${state}`}
+      style={{ '--vault-size': `${size}px`, '--vault-state': stateColor } as React.CSSProperties}
+      role="group"
+      aria-label={`${STATE_LABELS[state]}${balance === undefined ? '' : ` with ${balance.toLocaleString()} tokens`}`}
     >
-      <svg viewBox="0 0 200 200" width={size} height={size}>
-        {/* Safe body shadow */}
-        <rect x="25" y="35" width="150" height="145" rx="12" fill="#0a0a0a" />
+      <motion.div
+        className="tactical-vault__assembly"
+        animate={reduceMotion || state !== 'attacking' ? undefined : { x: [0, -3, 3, -2, 0] }}
+        transition={{ duration: 0.38, repeat: Infinity, repeatDelay: 1.8 }}
+      >
+        <svg viewBox="0 0 320 320" className="tactical-vault__svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="door-metal" cx="42%" cy="35%" r="70%">
+              <stop offset="0" stopColor="#303630" />
+              <stop offset="0.55" stopColor="#171b17" />
+              <stop offset="1" stopColor="#0a0c0a" />
+            </radialGradient>
+            <linearGradient id="frame-metal" x1="0" x2="1" y1="0" y2="1">
+              <stop stopColor="#3b423b" />
+              <stop offset="0.34" stopColor="#111511" />
+              <stop offset="0.7" stopColor="#252b25" />
+              <stop offset="1" stopColor="#080a08" />
+            </linearGradient>
+            <filter id="state-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
 
-        {/* Safe body */}
-        <rect
-          x="20"
-          y="30"
-          width="150"
-          height="145"
-          rx="12"
-          fill={bgColor}
-          stroke={isVulnerable ? '#FF5000' : '#2a2a2a'}
-          strokeWidth="3"
-        />
+          <path d="M48 20h224l28 28v224l-28 28H48l-28-28V48z" fill="#050705" stroke="#2d332d" strokeWidth="4" />
+          <path d="M54 29h212l24 24v212l-24 24H54l-24-24V53z" fill="url(#frame-metal)" stroke={stateColor} strokeOpacity=".45" strokeWidth="2" />
+          <path d="M67 46h186l20 20v188l-20 20H67l-20-20V66z" fill="#090b09" stroke="#424942" />
 
-        {/* Safe door frame */}
-        <rect
-          x="30"
-          y="40"
-          width="130"
-          height="125"
-          rx="8"
-          fill={isVulnerable ? '#151010' : '#0f0f0f'}
-          stroke={isVulnerable ? '#FF500033' : '#1a1a1a'}
-          strokeWidth="2"
-        />
+          {[{x: 45,y:45},{x:275,y:45},{x:45,y:275},{x:275,y:275}].map((bolt, index) => (
+            <g key={index} className={breached && index === 1 ? 'tactical-vault__bolt--displaced' : ''}>
+              <circle cx={bolt.x} cy={bolt.y} r="7" fill="#272d27" stroke="#5a635a" />
+              <path d={`M${bolt.x - 3} ${bolt.y}h6`} stroke="#090b09" strokeWidth="2" />
+            </g>
+          ))}
 
-        {/* Inner vault area - where balance shows */}
-        <rect
-          x="40"
-          y="50"
-          width="110"
-          height="70"
-          rx="4"
-          fill="#0a0a0a"
-        />
-
-        {/* Balance display area glow */}
-        <rect
-          x="42"
-          y="52"
-          width="106"
-          height="66"
-          rx="3"
-          fill="none"
-          stroke={accentColor}
-          strokeWidth="1"
-          opacity="0.3"
-        />
-
-        {/* Dial outer ring */}
-        <circle
-          cx="95"
-          cy="145"
-          r="22"
-          fill="#0f0f0f"
-          stroke={accentColor}
-          strokeWidth="2"
-        />
-
-        {/* Dial inner ring */}
-        <circle
-          cx="95"
-          cy="145"
-          r="16"
-          fill="#1a1a1a"
-          stroke="#333"
-          strokeWidth="1"
-        />
-
-        {/* Dial center */}
-        <circle cx="95" cy="145" r="5" fill={accentColor} />
-
-        {/* Dial tick marks */}
-        {[...Array(8)].map((_, i) => {
-          const angle = (i * 45) * Math.PI / 180;
-          const x1 = 95 + Math.cos(angle) * 12;
-          const y1 = 145 + Math.sin(angle) * 12;
-          const x2 = 95 + Math.cos(angle) * 15;
-          const y2 = 145 + Math.sin(angle) * 15;
-          return (
-            <line
-              key={i}
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
-              stroke="#444"
-              strokeWidth="1.5"
-            />
-          );
-        })}
-
-        {/* Dial pointer */}
-        <motion.line
-          x1="95"
-          y1="145"
-          x2="95"
-          y2="132"
-          stroke={accentColor}
-          strokeWidth="2"
-          strokeLinecap="round"
-          animate={{ rotate: isBeingAttacked ? [0, 360] : 0 }}
-          transition={{ duration: 2, repeat: isBeingAttacked ? Infinity : 0, ease: "linear" }}
-          style={{ transformOrigin: '95px 145px' }}
-        />
-
-        {/* Handle */}
-        <rect x="130" y="138" width="8" height="14" rx="2" fill="#333" stroke="#444" strokeWidth="1" />
-
-        {/* Corner bolts */}
-        <circle cx="35" cy="45" r="3" fill="#333" />
-        <circle cx="155" cy="45" r="3" fill="#333" />
-        <circle cx="35" cy="160" r="3" fill="#333" />
-        <circle cx="155" cy="160" r="3" fill="#333" />
-
-        {/* Glow effect when vulnerable */}
-        {isVulnerable && (
-          <motion.rect
-            x="20"
-            y="30"
-            width="150"
-            height="145"
-            rx="12"
-            fill="none"
-            stroke="#FF5000"
-            strokeWidth="2"
-            opacity={0.4}
-            animate={{ opacity: [0.4, 0.1, 0.4] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-          />
-        )}
-      </svg>
-
-      {/* Balance display inside safe */}
-      {balance !== undefined && (
-        <div
-          className="absolute flex flex-col items-center justify-center pointer-events-none"
-          style={{
-            top: size * 0.25,
-            left: size * 0.2,
-            width: size * 0.6,
-            height: size * 0.35,
-          }}
-        >
-          <p className="text-text-dim text-[10px] uppercase tracking-wider mb-1">
-            {isVulnerable ? 'At Risk' : 'Secured'}
-          </p>
-          <p
-            className={`font-bold tracking-tight ${isVulnerable ? 'text-loss' : 'text-neon'}`}
-            style={{ fontSize: size * 0.14 }}
+          <motion.g
+            className="tactical-vault__door"
+            initial={{ x: 0, rotateY: 0, opacity: 1 }}
+            animate={breached && !reduceMotion
+              ? { x: 48, rotateY: 24, opacity: 0.68 }
+              : { x: 0, rotateY: 0, opacity: 1 }}
+            transition={{ type: 'spring', damping: 18, stiffness: 90 }}
           >
-            ${formatBalance(balance)}
-          </p>
-        </div>
-      )}
-    </motion.div>
+            <circle cx="160" cy="160" r="104" fill="url(#door-metal)" stroke="#4b534b" strokeWidth="5" />
+            <circle cx="160" cy="160" r="89" fill="none" stroke={stateColor} strokeOpacity=".38" strokeWidth="2" strokeDasharray={breached ? '24 14' : '3 8'} />
+            <circle cx="160" cy="160" r="72" fill="#101310" stroke="#323832" strokeWidth="8" />
+
+            {[0, 60, 120, 180, 240, 300].map((angle) => (
+              <motion.rect
+                key={angle}
+                x="153"
+                y="52"
+                width="14"
+                height="36"
+                rx="3"
+                fill="#596159"
+                stroke="#0a0c0a"
+                style={{ transformOrigin: '160px 160px', rotate: `${angle}deg` }}
+                animate={breached && !reduceMotion ? { y: -16 } : undefined}
+              />
+            ))}
+
+            <motion.g
+              style={{ transformOrigin: '160px 160px' }}
+              animate={dialMotion ? { rotate: dialMotion } : undefined}
+              transition={{ duration: state === 'attacking' ? 1.2 : 3, repeat: state === 'attacking' ? Infinity : 0, ease: 'linear' }}
+            >
+              <circle cx="160" cy="160" r="50" fill="#080a08" stroke={stateColor} strokeWidth="3" />
+              <circle cx="160" cy="160" r="33" fill="#242a24" stroke="#5c655c" />
+              {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
+                <line key={angle} x1="160" y1="119" x2="160" y2="127" stroke={stateColor} strokeWidth="2" style={{ transformOrigin: '160px 160px', rotate: `${angle}deg` }} />
+              ))}
+              <path d="M160 160V130" stroke={stateColor} strokeWidth="5" strokeLinecap="round" />
+            </motion.g>
+            <circle cx="160" cy="160" r="10" fill={stateColor} filter="url(#state-glow)" />
+          </motion.g>
+
+          {!secure && (
+            <motion.path
+              d="M76 76L244 244"
+              stroke={stateColor}
+              strokeWidth="2"
+              strokeDasharray="8 10"
+              animate={reduceMotion ? undefined : { pathLength: [0.12, 1], opacity: [0.15, 0.85, 0.15] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+          )}
+          {breached && <path d="M211 57l-17 39 21 20-24 37 18 25" fill="none" stroke="#fff" strokeWidth="3" />}
+        </svg>
+
+        {balance !== undefined && (
+          <div className="tactical-vault__readout" aria-hidden="true">
+            <span>{state === 'secure' ? 'SECURED BALANCE' : 'VAULT BALANCE'}</span>
+            <strong>{formatBalance(balance)} <small>TK</small></strong>
+          </div>
+        )}
+
+        {state === 'exposed' && <AlertTriangle className="tactical-vault__state-mark" aria-hidden="true" />}
+        {state === 'secure' && <ShieldCheck className="tactical-vault__state-mark" aria-hidden="true" />}
+        {state === 'recovering' && <Wrench className="tactical-vault__state-mark" aria-hidden="true" />}
+
+        {locks.slice(0, 3).map((lock, index) => (
+          <button
+            key={lock.id}
+            type="button"
+            className={`tactical-vault__lock tactical-vault__lock--${index + 1}`}
+            onClick={() => onLockSelect?.(index)}
+            aria-label={`Lock ${index + 1}: ${lock.name}, ${Math.round(lock.difficulty * 100)} percent difficulty`}
+          >
+            <GameIcon type={lock.type} size={20} />
+            <span>{index + 1}</span>
+          </button>
+        ))}
+      </motion.div>
+      <figcaption className="sr-only">{STATE_LABELS[state]}</figcaption>
+    </figure>
   );
 };
 
-// Smaller version for target safes in heist mode
 export const TargetSafeGraphic = ({
   size = 80,
   difficulty = 'tricky',
@@ -201,64 +178,16 @@ export const TargetSafeGraphic = ({
   difficulty?: 'soft' | 'tricky' | 'brutal';
   ownerName?: string;
 }) => {
-  const colors = {
-    soft: '#00C805',
-    tricky: '#FFB800',
-    brutal: '#FF5000',
-  };
-
+  const colors = { soft: '#D8FF45', tricky: '#FFAE42', brutal: '#FF5B32' };
   const color = colors[difficulty];
-
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div className="target-vault-emblem" style={{ width: size, height: size, color }} aria-hidden="true">
       <svg viewBox="0 0 80 80" width={size} height={size}>
-        {/* Safe body */}
-        <rect
-          x="8"
-          y="12"
-          width="60"
-          height="56"
-          rx="6"
-          fill="#121212"
-          stroke={color}
-          strokeWidth="2"
-        />
-
-        {/* Door */}
-        <rect
-          x="12"
-          y="16"
-          width="52"
-          height="48"
-          rx="4"
-          fill="#0a0a0a"
-        />
-
-        {/* Dial */}
-        <circle
-          cx="38"
-          cy="40"
-          r="12"
-          fill="#0f0f0f"
-          stroke={color}
-          strokeWidth="1.5"
-        />
-        <circle
-          cx="38"
-          cy="40"
-          r="3"
-          fill={color}
-        />
-
-        {/* Handle */}
-        <rect
-          x="54"
-          y="35"
-          width="4"
-          height="10"
-          rx="1"
-          fill="#333"
-        />
+        <path d="M12 7h49l12 12v48l-7 7H12L6 68V14z" fill="#111411" stroke="currentColor" strokeWidth="2" />
+        <circle cx="39" cy="40" r="20" fill="#090b09" stroke="currentColor" strokeDasharray="3 4" />
+        <circle cx="39" cy="40" r="9" fill="#202520" stroke="currentColor" />
+        <path d="M39 40V31M39 40l8 5" stroke="currentColor" strokeWidth="2" />
+        <path d="M66 30v20" stroke="currentColor" strokeWidth="4" />
       </svg>
     </div>
   );

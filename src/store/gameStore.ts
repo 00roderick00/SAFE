@@ -88,6 +88,7 @@ export const useGameStore = create<GameStore>()(
             lastAttackedAt: t.lastAttackedAt ? new Date(t.lastAttackedAt).getTime() : null,
             attackCooldownUntil: null,
             tagline: t.tagline ?? (t.isBot ? undefined : 'Live target'),
+            isBotTarget: t.isBot,
           }));
           set({ botSafes, lastBotRefresh: Date.now(), targetsSource: 'server' });
         } catch (err) {
@@ -95,7 +96,6 @@ export const useGameStore = create<GameStore>()(
           // unreachable — and record that so the UI can surface it
           // (real players carry the custom games, so a silent fallback
           // hides the whole creator economy). See TESTING-FINDINGS-2 P1.
-          // eslint-disable-next-line no-console
           console.warn('[targets] server refresh failed, using local bots', err);
           const safes = generateBotFeed(playerRating, count);
           set({ botSafes: safes, lastBotRefresh: Date.now(), targetsSource: 'local' });

@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Sparkles, CheckCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, CheckCircle, Gamepad2, Loader2 } from 'lucide-react';
 import { api, type PublicCustomGame } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { supabase } from '../services/supabaseClient';
@@ -91,7 +91,7 @@ export const MarketplaceScreen = () => {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-4">
         <div className="flex items-center">
-          <button onClick={() => navigate('/custom-games')} className="p-2 -ml-2 text-text-dim hover:text-text">
+          <button onClick={() => navigate('/custom-games')} className="p-2 -ml-2 text-text-dim hover:text-text" aria-label="Back to custom games">
             <ArrowLeft size={24} />
           </button>
           <h1 className="ml-2 text-lg font-semibold">Marketplace</h1>
@@ -117,7 +117,7 @@ export const MarketplaceScreen = () => {
 
         {!loading && games.length === 0 && (
           <div className="text-center py-12">
-            <span className="text-6xl block mb-4">🕹️</span>
+            <Gamepad2 size={48} className="mx-auto mb-4 text-primary" aria-hidden="true" />
             <p className="text-text-dim">No live community games yet.</p>
           </div>
         )}

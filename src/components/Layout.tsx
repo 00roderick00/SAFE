@@ -29,16 +29,16 @@ export const Layout = ({ children }: LayoutProps) => {
   const hideNav = location.pathname.startsWith('/attack');
 
   return (
-    <div className="min-h-screen bg-background grid-bg flex flex-col">
+    <div className="app-shell bg-background grid-bg">
       {/* Main content */}
-      <main className="flex-1 overflow-auto pb-20">
-        {children}
+      <main className="app-main" id="main-content">
+        <div className="app-canvas">{children}</div>
       </main>
 
       {/* Bottom Navigation */}
       {!hideNav && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-lg border-t border-primary/20 safe-area-pb">
-          <div className="max-w-lg mx-auto flex justify-around items-center h-16">
+        <nav className="app-nav" aria-label="Primary navigation">
+          <div className="app-nav__inner">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
               const Icon = item.icon;
@@ -47,7 +47,8 @@ export const Layout = ({ children }: LayoutProps) => {
                 <NavLink
                   key={item.path}
                   to={item.path}
-                  className="relative flex flex-col items-center justify-center w-16 h-full"
+                  aria-label={item.label}
+                  className="app-nav__item"
                 >
                   <motion.div
                     className={`
@@ -58,6 +59,7 @@ export const Layout = ({ children }: LayoutProps) => {
                   >
                     <Icon
                       size={24}
+                      aria-hidden="true"
                       className={isActive ? 'neon-text-primary' : ''}
                     />
                     <span className="text-xs mt-1 font-medium">
@@ -65,7 +67,7 @@ export const Layout = ({ children }: LayoutProps) => {
                     </span>
                     {isActive && (
                       <motion.div
-                        className="absolute -bottom-0 w-8 h-0.5 bg-primary rounded-full"
+                        className="app-nav__indicator"
                         layoutId="nav-indicator"
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                       />

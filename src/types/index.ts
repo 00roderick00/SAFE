@@ -124,6 +124,8 @@ export interface BotSafe {
   // AI bot properties
   personality?: BotPersonality;
   tagline?: string;
+  /** Presentation-only provenance from list_targets; economy treats ids as opaque. */
+  isBotTarget?: boolean;
 }
 
 export interface AttackResult {

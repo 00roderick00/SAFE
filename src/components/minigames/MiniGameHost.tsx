@@ -1,4 +1,4 @@
-import { createElement } from 'react';
+import { createElement, Suspense } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { MiniGameResult, ModuleType } from '../../types';
 import { getMiniGameComponent } from './registry';
@@ -83,7 +83,9 @@ export const MiniGameHost = ({
   // dispatch trips its "component created during render" heuristic.
   return (
     <MiniGameErrorBoundary moduleType={moduleType} moduleId={moduleId} onFail={onFail}>
-      {createElement(Component, { difficulty, seed, config, onComplete })}
+      <Suspense fallback={<div className="minigame-loading" role="status"><span />Loading lock mechanism…</div>}>
+        {createElement(Component, { difficulty, seed, config, onComplete })}
+      </Suspense>
     </MiniGameErrorBoundary>
   );
 };

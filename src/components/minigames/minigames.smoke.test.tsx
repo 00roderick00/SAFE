@@ -6,8 +6,9 @@
  * We aren't asserting gameplay — just that mounting each one with the
  * canonical `{ difficulty, seed, onComplete }` contract does not throw.
  */
+import { Suspense } from 'react';
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MINIGAME_REGISTRY } from './registry';
 import type { ModuleType } from '../../types';
 
@@ -37,14 +38,22 @@ describe('MINIGAME_REGISTRY', () => {
 });
 
 describe.each(registeredTypes)('minigame smoke: %s', (type) => {
-  it('mounts and unmounts without throwing', () => {
+  it('loads, mounts, and unmounts without throwing', async () => {
     const Component = MINIGAME_REGISTRY[type]!;
     const onComplete = vi.fn();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const { unmount } = render(
-      <Component difficulty={0.5} seed={`smoke-${type}`} onComplete={onComplete} />
-    );
-    // Successfully mounted; unmount without exception.
-    unmount();
+    try {
+      const { unmount } = render(
+        <Suspense fallback={<div>loading</div>}>
+          <div data-testid="loaded-game"><Component difficulty={0.5} seed={`smoke-${type}`} onComplete={onComplete} /></div>
+        </Suspense>
+      );
+      expect(await screen.findByTestId('loaded-game')).toBeInTheDocument();
+      unmount();
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });

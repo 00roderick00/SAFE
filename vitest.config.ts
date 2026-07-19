@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, 'supabase/functions/_shared'),
+      '@shared': path.resolve(import.meta.dirname, 'supabase/functions/_shared'),
     },
   },
   test: {

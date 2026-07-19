@@ -23,9 +23,9 @@ const variantStyles: Record<ButtonVariant, string> = {
     hover:border-primary/50 hover:text-primary
   `,
   danger: `
-    bg-danger text-white
-    hover:bg-danger/90
-    active:bg-danger/80
+    bg-danger text-background
+    hover:bg-danger-dim
+    active:bg-danger-dim
   `,
   ghost: `
     bg-transparent text-text-dim
