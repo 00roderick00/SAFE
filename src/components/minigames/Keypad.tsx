@@ -3,9 +3,17 @@ import { motion } from 'framer-motion';
 import { Delete } from 'lucide-react';
 import { MiniGameProps } from '../../types';
 import { generateKeypadConfig, scoreKeypadAttempt } from '../../game/modules';
+import { deriveLockSolution } from '../../game/lockSolutions';
 
-export const Keypad = ({ difficulty, onComplete }: MiniGameProps) => {
-  const config = useMemo(() => generateKeypadConfig(difficulty), [difficulty]);
+export const Keypad = ({ difficulty, seed, onComplete }: MiniGameProps) => {
+  // The code is derived from the issued seed so the server can verify
+  // the player's answer (it recomputes the same secret). Length/displayTime
+  // etc. still come from the difficulty-based config.
+  const config = useMemo(() => {
+    const base = generateKeypadConfig(difficulty);
+    const sequence = deriveLockSolution('keypad', seed ?? '', difficulty).join('');
+    return { ...base, sequence, sequenceLength: sequence.length };
+  }, [difficulty, seed]);
   const [showSequence, setShowSequence] = useState(true);
   const [userInput, setUserInput] = useState('');
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -45,6 +53,9 @@ export const Keypad = ({ difficulty, onComplete }: MiniGameProps) => {
         score,
         passed: score >= 0.65,
         timeSpent,
+        // The player's actual typed code — server-verified against the
+        // seed-derived secret (client score is not trusted).
+        answer: input,
       });
     },
     [config, startTime, onComplete]

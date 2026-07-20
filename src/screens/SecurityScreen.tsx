@@ -19,6 +19,7 @@ import { GameEmblem, GameIcon, StateBadge, StateFrame } from '../components/game
 import { MiniGameHost } from '../components/minigames';
 import { getCatalogMeta, getDefenseMix } from '../game/catalog';
 import { calculateEconomyStats } from '../game/economy';
+import { isVerifiableModule } from '../game/lockSolutions';
 import { api } from '../services/api';
 import { supabase } from '../services/supabaseClient';
 import { usePlayerStore } from '../store/playerStore';
@@ -42,6 +43,11 @@ export const SecurityScreen = () => {
   const stats = calculateEconomyStats(safeBalance, securityLoadout);
   const insured = Boolean(insurancePolicy && now < insurancePolicy.expiresAt);
   const mix = getDefenseMix(securityLoadout.modules.map((module) => module.type));
+  // Composition guarantee: a safe with no server-verifiable lock cannot
+  // defend real stakes — the server can't prove any lock was actually
+  // beaten, so an attacker could only be stopped by forgeable checks. We
+  // surface this and force such attacks to a loss server-side.
+  const verifiableCount = securityLoadout.modules.filter((module) => isVerifiableModule(module)).length;
   const currentTestModule = testIndex === null ? null : securityLoadout.modules[testIndex];
 
   const persistLoadout = async () => {
@@ -94,6 +100,18 @@ export const SecurityScreen = () => {
           <div className="defense-summary__score"><Shield size={30} /><span>SECURITY STRENGTH</span><strong>{Math.round(stats.securityScore)}</strong><small>{stats.securityScore >= 65 ? 'Hardened' : stats.securityScore >= 35 ? 'Operational' : 'Vulnerable'}</small></div>
           <div className="defense-summary__intel"><span>Potential breach loss <b>{Math.round(stats.potentialLoot).toLocaleString()} TK</b></span><span>Insurance <b>{insured ? 'Active' : 'Not active'}</b></span><span>Skill coverage <b>{mix.covered.length} / 5</b></span></div>
         </section>
+
+        {verifiableCount === 0 && (
+          <StateFrame state="failed" className="verify-warning" label="Safe not defendable" aria-live="polite">
+            <Shield size={22} />
+            <div>
+              <p className="eyebrow">UNVERIFIED DEFENSE</p>
+              <strong>This safe can't defend real stakes</strong>
+              <span>None of its locks can be verified by the server, so raids on it are auto-forfeited by the attacker (no tokens are ever won or lost). Equip at least one verifiable lock — Keypad, Color Code, or Combo Dial — or a custom game.</span>
+            </div>
+            <button className="text-button" onClick={() => navigate('/security/pick/2')}>Fix it <ChevronRight size={15} /></button>
+          </StateFrame>
+        )}
 
         <section className="defense-mix" aria-label="Defensive mix analysis">
           <div className="section-title-row"><div><p className="eyebrow">DEFENSIVE MIX</p><h2>Coverage analysis</h2></div><Layers3 size={20} /></div>

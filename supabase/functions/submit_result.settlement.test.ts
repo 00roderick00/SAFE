@@ -78,13 +78,20 @@ const seeds: AttackModuleSeed[] = [
 
 // The orchestration under test, mirroring submit_result/index.ts.
 function runSubmit(db: MockDb, submitted: SubmittedResultV[]) {
-  const lo = loadout();
-  const verified = verifyAttack(attackId, lo, seeds, submitted);
+  return runSubmitWith(db, loadout(), seeds, submitted);
+}
+
+function runSubmitWith(db: MockDb, lo: SecurityLoadout, sds: AttackModuleSeed[], submitted: SubmittedResultV[]) {
+  const verified = verifyAttack(attackId, lo, sds, submitted);
   if (!verified.ok) return { error: verified.error };
 
   const defenderBalance = db.balance(defender);
   const { potentialLoot, attackerReceives, platformReceives, defenderLoses } = computeLootSplit(defenderBalance);
-  const status: 'won' | 'lost' = verified.allPassed && verified.submittedCount === lo.modules.length ? 'won' : 'lost';
+  const clientWon = verified.allPassed && verified.submittedCount === lo.modules.length;
+  // Composition guarantee (mirrors submit_result): a safe with no
+  // server-verifiable lock can never be a win, regardless of client claim.
+  const noVerifiableLock = verified.verifiableCount === 0;
+  const status: 'won' | 'lost' = clientWon && !noVerifiableLock ? 'won' : 'lost';
   const loot = status === 'won' ? potentialLoot : 0;
 
   const ledger: LedgerRow[] = [];
@@ -151,5 +158,39 @@ describe('submit_result settlement (P0.2)', () => {
   it('loss royalty no longer floors to zero on small stakes', () => {
     const r = computeCreatorRoyalty({ outcome: 'lost', stake: 16, platformReceivesOnWin: 0, distinctCreators: 1 });
     expect(r.perCreator).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('composition rule — a safe with no verifiable lock cannot be breached', () => {
+  let db: MockDb;
+  beforeEach(() => {
+    db = new MockDb();
+    db.seed(attacker, 1000);
+    db.seed(defender, 2000);
+  });
+
+  // All-arcade safe: nothing the server can verify.
+  const arcadeLoadout: SecurityLoadout = {
+    effectiveScore: 0,
+    modules: [
+      { id: 'a', type: 'pacman', difficulty: 0.5, weight: 1, name: 'Pac-Man', description: '' },
+      { id: 'b', type: 'snake', difficulty: 0.5, weight: 1, name: 'Snake', description: '' },
+    ],
+  };
+  const arcadeSeeds: AttackModuleSeed[] = arcadeLoadout.modules.map((m, i) => ({ index: i, moduleType: m.type, difficulty: m.difficulty, seed: `s${i}` }));
+
+  it('a plausible all-pass against an all-arcade safe is FORCED to a loss (no loot)', () => {
+    // Every module passes plausibility (long enough, high score) — the
+    // old code would have paid this out. With no verifiable lock it must
+    // settle as a loss.
+    const submitted: SubmittedResultV[] = arcadeLoadout.modules.map((m, i) => ({
+      moduleIndex: i, moduleType: m.type, score: 0.95, passed: true, timeSpent: 12_000,
+    }));
+    const out = runSubmitWith(db, arcadeLoadout, arcadeSeeds, submitted);
+    expect(out.status).toBe('lost');
+    expect(db.attackStatus).toBe('lost');
+    expect(db.count('attack_loot')).toBe(0);
+    expect(db.balance(attacker)).toBe(1000);
+    expect(db.balance(defender)).toBe(2000); // nothing stolen
   });
 });

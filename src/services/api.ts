@@ -167,6 +167,9 @@ export const api = {
       timeSpent: number;
       /** DSL-only: per-tick player directions for server-side replay. */
       inputTrace?: ('up' | 'down' | 'left' | 'right' | 'idle')[];
+      /** Seed-answer locks: the player's actual answer (digits string or
+       *  int array), server-verified against the seed-derived secret. */
+      answer?: string | number[];
     }[];
   }): Promise<SubmitResultPayload> {
     return callFunction<SubmitResultPayload>('submit_result', input);

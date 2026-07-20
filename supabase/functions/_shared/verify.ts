@@ -1,30 +1,38 @@
-// Server-side outcome verification for a submitted attack
-// (TESTING-FINDINGS-2 P0.1).
+// Server-side outcome verification for a submitted attack.
 //
 // The exploit this closes: a client POSTing `{passed:true, score:0.85}`
 // for every module WITHOUT playing anything was accepted as a win. The
 // old path only ran plausibility sanity checks — it never confirmed the
-// game was actually beaten. Any attacker could take any safe.
+// game was actually beaten. Any non-DSL safe could be forged.
 //
-// Verification tiers per module:
-//   - DSL games (mode='dsl_program'): DETERMINISTIC REPLAY. We ignore
-//     the client's passed/score entirely and replay its recorded input
-//     trace from the issued seed via the same runtime calibration uses.
-//     `passed` iff the replay actually wins. No trace → cannot pass.
-//   - Everything else (built-in locks/arcades, engine-config customs):
-//     not yet server-replayable, so they fall back to plausibility. This
-//     is a documented residual — a safe that contains at least one DSL
-//     module (as in the reported case) is now fully protected, because
-//     all-or-nothing means the fabricated DSL module fails the replay
-//     and sinks the whole attack.
+// Verification classes per module (see PROGRESS-SECURITY.md):
+//   - DSL games (mode='dsl_program'): DETERMINISTIC REPLAY of the
+//     client's recorded input trace from the issued seed. `passed` iff
+//     the replay wins.
+//   - Answer locks (keypad, colorcode, sequence, combination): the
+//     server recomputes the seed-derived secret and compares the
+//     player's SUBMITTED answer. `passed` iff they match exactly.
+//   - Everything else (skill/arcade games, other locks, engine_config
+//     customs): not yet independently verifiable → plausibility sanity
+//     check only. These can never be the ONLY thing guarding a safe:
+//     submit_result enforces that a real safe has >= 1 verifiable module
+//     (countVerifiableModules), so a forged result can never breach it.
+//
+// For DSL + answer locks the client's self-reported passed/score is
+// IGNORED — only the server's recomputation decides.
 
 import type { SecurityLoadout } from './types.ts';
 import type { AttackModuleSeed } from './attack-flow.ts';
 import { checkPlausibility } from './plausibility.ts';
 import { replayDslTrace, type Direction } from './dsl-runtime.ts';
 import { validateDsl, type DslGame } from './dsl.ts';
+import {
+  countVerifiableModules,
+  isVerifiableLockType,
+  verifyLockAnswer,
+} from './lock-solutions.ts';
 
-export type VerificationMethod = 'replay' | 'plausibility' | 'missing';
+export type VerificationMethod = 'replay' | 'answer' | 'plausibility' | 'missing';
 
 export interface SubmittedResultV {
   moduleType: string;
@@ -34,6 +42,9 @@ export interface SubmittedResultV {
   timeSpent: number;
   /** Ordered per-tick player directions, required to verify DSL wins. */
   inputTrace?: Direction[];
+  /** Player's actual answer for a seed-answer lock (digits string or
+   *  int array). Recomputed + compared server-side. */
+  answer?: unknown;
 }
 
 export interface VerifiedRow {
@@ -49,7 +60,7 @@ export interface VerifiedRow {
 }
 
 export type VerifyResult =
-  | { ok: true; rows: VerifiedRow[]; allPassed: boolean; submittedCount: number }
+  | { ok: true; rows: VerifiedRow[]; allPassed: boolean; submittedCount: number; verifiableCount: number }
   | { ok: false; error: string; at: number; reason?: string };
 
 const MAX_TIME_MS = 180_000;
@@ -67,11 +78,10 @@ function isDslModule(mod: { customConfig?: { mode?: string } }, seed?: AttackMod
 
 /**
  * Recompute the true per-module outcome for an attack, server-side.
- * Returns the rows to persist + whether every module passed. Missing
- * results (a short/abandoned submission) are recorded as failed. A
- * non-DSL result that is physically implausible is rejected outright
- * (the caller returns 422) — that preserves the existing fraud check;
- * DSL results are decided purely by replay and never 422.
+ * Returns the rows to persist, whether every module passed, and how many
+ * modules were independently verifiable (for the composition guarantee).
+ * Missing results are recorded as failed. A non-verifiable result that is
+ * physically implausible is rejected outright (the caller returns 422).
  */
 export function verifyAttack(
   attackId: string,
@@ -107,8 +117,8 @@ export function verifyAttack(
     if (r.moduleIndex !== i) return { ok: false, error: 'module_index_out_of_order', at: i };
     if (r.moduleType !== mod.type) return { ok: false, error: 'module_type_mismatch', at: i };
 
+    // --- DSL custom game: deterministic replay ---------------------
     if (isDslModule(mod, seed)) {
-      // Authoritative replay — client passed/score are ignored.
       const program = coerceDsl(seed?.config ?? mod.customConfig?.config);
       const trace = Array.isArray(r.inputTrace) ? r.inputTrace : [];
       let passed = false;
@@ -137,7 +147,28 @@ export function verifyAttack(
       continue;
     }
 
-    // Non-DSL: fall back to plausibility (fraud sanity, not full replay).
+    // --- Seed-answer lock: recompute + compare ---------------------
+    if (isVerifiableLockType(mod.type)) {
+      // The issued seed carries the same difficulty the client rendered.
+      const difficulty = seed?.difficulty ?? mod.difficulty;
+      const seedStr = seed?.seed ?? '';
+      const passed = verifyLockAnswer(mod.type, seedStr, difficulty, r.answer);
+      rows.push({
+        attack_id: attackId,
+        module_index: i,
+        module_type: mod.type,
+        score: passed ? 1 : 0,
+        passed,
+        time_spent_ms: clampTime(r.timeSpent),
+        method: 'answer',
+        reason: passed ? undefined : (r.answer === undefined ? 'no_answer' : 'answer_mismatch'),
+      });
+      submittedCount++;
+      if (!passed) allPassed = false;
+      continue;
+    }
+
+    // --- Class 2 (not independently verifiable): plausibility -------
     const verdict = checkPlausibility(r, mod.difficulty);
     if (!verdict.ok) return { ok: false, error: 'implausible_result', at: i, reason: verdict.reason };
     rows.push({
@@ -154,5 +185,5 @@ export function verifyAttack(
   }
 
   if (expected === 0) allPassed = false;
-  return { ok: true, rows, allPassed, submittedCount };
+  return { ok: true, rows, allPassed, submittedCount, verifiableCount: countVerifiableModules(loadout) };
 }

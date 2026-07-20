@@ -5,6 +5,7 @@
 import { calculateAttackFee, calculateLoot } from './economy.ts';
 import { ECONOMY, MODULE_CONFIG, ALL_MODULE_TYPES } from './constants.ts';
 import { newSeed, createRng } from './rng.ts';
+import { VERIFIABLE_LOCK_TYPES } from './lock-solutions.ts';
 import type { ModuleType, SecurityLoadout, SecurityModule } from './types.ts';
 
 export interface AttackModuleSeed {
@@ -140,9 +141,17 @@ export function generateBotLoadout(seed: string, difficultyBias: number = 0.5): 
   const modules: SecurityModule[] = [];
   const usedTypes = new Set<ModuleType>();
 
+  // Composition guarantee: every bot has at least one server-verifiable
+  // lock, so a forged result can never breach it (and honest play always
+  // has something real to beat). Seed the first slot with one.
+  const firstVerifiable = VERIFIABLE_LOCK_TYPES[Math.floor(rng() * VERIFIABLE_LOCK_TYPES.length)] as ModuleType;
+  usedTypes.add(firstVerifiable);
+
   while (modules.length < ECONOMY.maxModules) {
-    const pick = ALL_MODULE_TYPES[Math.floor(rng() * ALL_MODULE_TYPES.length)];
-    if (usedTypes.has(pick)) continue;
+    const pick = modules.length === 0
+      ? firstVerifiable
+      : ALL_MODULE_TYPES[Math.floor(rng() * ALL_MODULE_TYPES.length)];
+    if (modules.length > 0 && usedTypes.has(pick)) continue;
     usedTypes.add(pick);
 
     const jitter = (rng() - 0.5) * 0.3;

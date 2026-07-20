@@ -1,13 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MiniGameResult } from '../../types';
+import { deriveLockSolution } from '../../game/lockSolutions';
 
 interface CombinationLockProps {
   difficulty: number;
+  seed?: string;
   onComplete: (result: MiniGameResult) => void;
 }
 
-export const CombinationLock = ({ difficulty, onComplete }: CombinationLockProps) => {
-  const [code, setCode] = useState<number[]>([]);
+export const CombinationLock = ({ difficulty, seed, onComplete }: CombinationLockProps) => {
+  // The secret combo is derived from the issued seed so the server can
+  // verify the entered code against the same seed-derived secret.
+  const code = useMemo(() => deriveLockSolution('combination', seed ?? '', difficulty), [seed, difficulty]);
+  const codeLength = code.length;
   const [currentDial, setCurrentDial] = useState(0);
   const [dialValue, setDialValue] = useState(0);
   const [enteredCode, setEnteredCode] = useState<number[]>([]);
@@ -17,19 +22,9 @@ export const CombinationLock = ({ difficulty, onComplete }: CombinationLockProps
   const startTime = useRef<number>(0);
   useEffect(() => { startTime.current = Date.now(); }, []);
 
-  const codeLength = Math.floor(3 + difficulty);
   const maxAttempts = Math.max(2, 5 - Math.floor(difficulty * 2));
 
-  // Generate random code
-  useEffect(() => {
-    const newCode = [];
-    for (let i = 0; i < codeLength; i++) {
-      newCode.push(Math.floor(Math.random() * 10));
-    }
-    setCode(newCode);
-  }, [codeLength]);
-
-  const handleGameEnd = useCallback((success: boolean) => {
+  const handleGameEnd = useCallback((success: boolean, answer: number[] = []) => {
     if (gameOver) return;
     setGameOver(true);
     const timeSpent = Date.now() - startTime.current;
@@ -39,6 +34,9 @@ export const CombinationLock = ({ difficulty, onComplete }: CombinationLockProps
       score: success ? 1 : 0,
       passed: success,
       timeSpent,
+      // The player's entered combo — server-verified against the
+      // seed-derived secret (client score is not trusted).
+      answer,
     });
   }, [gameOver, onComplete]);
 
@@ -76,12 +74,12 @@ export const CombinationLock = ({ difficulty, onComplete }: CombinationLockProps
       const isCorrect = newEntered.every((n, i) => n === code[i]);
 
       if (isCorrect) {
-        handleGameEnd(true);
+        handleGameEnd(true, newEntered);
       } else {
         setAttempts((a) => {
           const newAttempts = a + 1;
           if (newAttempts >= maxAttempts) {
-            handleGameEnd(false);
+            handleGameEnd(false, newEntered);
           }
           return newAttempts;
         });

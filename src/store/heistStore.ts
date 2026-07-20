@@ -164,6 +164,9 @@ export const useHeistStore = create<HeistStore>((set, get) => ({
       // DSL modules ship their recorded input trace so the server can
       // replay + verify the win (client passed/score is not trusted).
       ...(r.inputTrace ? { inputTrace: r.inputTrace } : {}),
+      // Seed-answer locks ship the player's actual answer so the server
+      // can recompute the seed-derived secret and compare.
+      ...(r.answer !== undefined ? { answer: r.answer } : {}),
     }));
     return api.submitResult({ attackId: state.serverAttack.attackId, results });
   },

@@ -150,8 +150,15 @@ serve(async (req) => {
   const { potentialLoot, attackerReceives, platformReceives, defenderLoses } =
     computeLootSplit(defenderBalance);
 
-  const status: 'won' | 'lost' =
-    verified.allPassed && verified.submittedCount === expectedModules ? 'won' : 'lost';
+  const clientWon = verified.allPassed && verified.submittedCount === expectedModules;
+  // Composition guarantee: a safe with NO server-verifiable lock cannot
+  // be breached — a "win" against it would rest entirely on forgeable,
+  // plausibility-only modules. Force such attacks to a loss so a
+  // fabricated result can never steal from it. Real defenders are warned
+  // client-side to keep >= 1 verifiable lock; bots are generated with
+  // one. See PROGRESS-SECURITY.md.
+  const noVerifiableLock = verified.verifiableCount === 0;
+  const status: 'won' | 'lost' = clientWon && !noVerifiableLock ? 'won' : 'lost';
   const loot = status === 'won' ? potentialLoot : 0;
   const platformFee = status === 'won' ? platformReceives : 0;
 
@@ -274,6 +281,12 @@ serve(async (req) => {
       perCreator: royaltyPaidPerCreator,
       total: royaltyPaidTotal,
       customGameIds,
+    },
+    verification: {
+      verifiableCount: verified.verifiableCount,
+      // A client-side win was overridden to a loss because the safe had
+      // no server-verifiable lock (composition guarantee).
+      forcedLoss: clientWon && noVerifiableLock,
     },
     idempotent: false,
   });

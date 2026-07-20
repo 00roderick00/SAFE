@@ -212,6 +212,11 @@ export interface MiniGameResult {
    *  seed and verify the win itself (see _shared/verify.ts). Absent for
    *  non-DSL games. */
   inputTrace?: ('up' | 'down' | 'left' | 'right' | 'idle')[];
+  /** Player's actual answer for a seed-answer lock (keypad/colorcode/
+   *  combination): a digit string or an array of ints. The server
+   *  recomputes the seed-derived secret and compares — client
+   *  passed/score is not trusted for these. */
+  answer?: string | number[];
 }
 
 // Insurance plan options

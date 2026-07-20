@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MiniGameResult } from '../../types';
+import { deriveLockSolution } from '../../game/lockSolutions';
 
 interface ColorCodeLockProps {
   difficulty: number;
+  seed?: string;
   onComplete: (result: MiniGameResult) => void;
 }
 
@@ -15,8 +17,11 @@ const COLORS = [
   { name: 'Purple', hex: '#a855f7' },
 ];
 
-export const ColorCodeLock = ({ difficulty, onComplete }: ColorCodeLockProps) => {
-  const [code, setCode] = useState<number[]>([]);
+export const ColorCodeLock = ({ difficulty, seed, onComplete }: ColorCodeLockProps) => {
+  // The secret code is derived from the issued seed so the server can
+  // verify the winning guess against the same seed-derived code.
+  const code = useMemo(() => deriveLockSolution('colorcode', seed ?? '', difficulty), [seed, difficulty]);
+  const codeLength = code.length;
   const [guess, setGuess] = useState<number[]>([]);
   const [, setFeedback] = useState<Array<'correct' | 'wrong-position' | 'wrong'>>([]);
   const [attempts, setAttempts] = useState<Array<{ guess: number[]; feedback: Array<'correct' | 'wrong-position' | 'wrong'> }>>([]);
@@ -26,19 +31,9 @@ export const ColorCodeLock = ({ difficulty, onComplete }: ColorCodeLockProps) =>
   const startTime = useRef<number>(0);
   useEffect(() => { startTime.current = Date.now(); }, []);
 
-  const codeLength = Math.floor(3 + difficulty);
   const maxAttempts = Math.floor(8 - difficulty * 2);
 
-  // Generate code
-  useEffect(() => {
-    const newCode = [];
-    for (let i = 0; i < codeLength; i++) {
-      newCode.push(Math.floor(Math.random() * COLORS.length));
-    }
-    setCode(newCode);
-  }, [codeLength]);
-
-  const handleGameEnd = useCallback((success: boolean) => {
+  const handleGameEnd = useCallback((success: boolean, answer: number[] = []) => {
     if (gameOver) return;
     setGameOver(true);
     setWon(success);
@@ -49,6 +44,9 @@ export const ColorCodeLock = ({ difficulty, onComplete }: ColorCodeLockProps) =>
       score: success ? 1 : attempts.length / maxAttempts,
       passed: success,
       timeSpent,
+      // The player's cracked code — server-verified against the
+      // seed-derived secret (client score is not trusted).
+      answer,
     });
   }, [gameOver, attempts.length, maxAttempts, onComplete]);
 
@@ -115,9 +113,9 @@ export const ColorCodeLock = ({ difficulty, onComplete }: ColorCodeLockProps) =>
 
     setFeedback(newFeedback);
 
-    // Check if won
+    // Check if won — submit the cracked code as the answer.
     if (newFeedback.every(f => f === 'correct')) {
-      handleGameEnd(true);
+      handleGameEnd(true, [...guess]);
       return;
     }
 
@@ -126,7 +124,7 @@ export const ColorCodeLock = ({ difficulty, onComplete }: ColorCodeLockProps) =>
     setAttempts(newAttempts);
 
     if (newAttempts.length >= maxAttempts) {
-      handleGameEnd(false);
+      handleGameEnd(false, [...guess]);
     }
 
     // Reset for next guess
