@@ -10,9 +10,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, Sparkles, CheckCircle, XCircle, Loader2, Store, Gauge, Gamepad2, Lightbulb } from 'lucide-react';
+import { ArrowLeft, Plus, Sparkles, Loader2, Store, Gauge, Gamepad2, Lightbulb } from 'lucide-react';
 import { api, type CustomGame, type GenerateGameResponse } from '../services/api';
+import { StateBadge, type VisualState } from '../components/game';
 import { useSession } from '../services/useSession';
+import { getCustomGameDisplay } from '../game/customGameDisplay';
 import { sanitizeUserText } from '../utils/sanitize';
 
 // The calibration band creators must land in for a game to go live.
@@ -133,39 +135,32 @@ export const CustomGameScreen = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <button
-              onClick={() => navigate('/security')}
-              className="p-2 -ml-2 text-text-dim hover:text-text"
-              aria-label="Back to defense configuration"
-            >
-              <ArrowLeft size={24} />
-            </button>
-            <h1 className="ml-2 text-lg font-semibold">Custom Games</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/marketplace')}
-              className="flex items-center gap-2 px-3 py-2 bg-surface border border-border rounded-xl text-sm"
-            >
-              <Store size={16} />
-              Browse
-            </button>
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-primary text-background font-medium rounded-xl"
-            >
-              <Plus size={18} />
-              Build
-            </button>
-          </div>
+    <div className="workshop-screen">
+      <header className="tactical-header workshop-header">
+        <button
+          className="icon-button"
+          onClick={() => navigate('/security')}
+          aria-label="Back to defense configuration"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <div>
+          <p className="eyebrow">AI WORKSHOP</p>
+          <h1>Custom Games</h1>
+        </div>
+        <div className="workshop-header__actions">
+          <button className="text-button" onClick={() => navigate('/marketplace')}>
+            <Store size={16} />
+            Browse
+          </button>
+          <button className="btn-neon workshop-build" onClick={() => setShowForm(true)}>
+            <Plus size={16} />
+            Build
+          </button>
         </div>
       </header>
 
-      <div className="px-4 py-6">
+      <main className="workshop-main">
         <div className="card-clean p-4 mb-6">
           <p className="text-sm text-text-dim">
             Describe a variant of one of our engines and the AI will propose a config.
@@ -336,13 +331,14 @@ export const CustomGameScreen = () => {
             ))}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };
 
 const CustomGameRow = ({ game }: { game: CustomGame }) => {
   const rate = game.calibration_stats?.solveRate;
+  const display = getCustomGameDisplay(game);
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -358,10 +354,17 @@ const CustomGameRow = ({ game }: { game: CustomGame }) => {
         </div>
         <StatusPill status={game.status} />
       </div>
-      {game.description && (
-        <p className="text-sm text-text-dim mt-2 line-clamp-2">
-          {sanitizeUserText(game.description, { maxLength: 200 })}
+      {display.contentRejected ? (
+        // Moderation/quality reject: never surface the raw prompt.
+        <p className="text-sm text-text-dim mt-2 italic">
+          Original prompt hidden — this submission was blocked in review.
         </p>
+      ) : (
+        game.description && (
+          <p className="text-sm text-text-dim mt-2 line-clamp-2">
+            {sanitizeUserText(game.description, { maxLength: 200 })}
+          </p>
+        )
       )}
       {game.calibration_stats && (
         <div className="bg-surface-light rounded-lg p-3 mt-3 text-sm space-y-1">
@@ -381,9 +384,9 @@ const CustomGameRow = ({ game }: { game: CustomGame }) => {
             <span className="text-text-dim">Plays</span>
             <span>{game.plays}</span>
           </div>
-          {game.calibration_stats.reason && (
+          {display.rejectionNote && (
             <p className="text-xs text-warning pt-2 border-t border-border">
-              Rejected: {game.calibration_stats.reason}
+              {display.rejectionNote}
             </p>
           )}
           {game.calibration_stats.suggestion && (
@@ -441,17 +444,12 @@ const PreviewBox = ({ preview, band }: { preview: PreviewState; band: { min: num
 };
 
 const StatusPill = ({ status }: { status: CustomGame['status'] }) => {
-  const map = {
-    draft: { text: 'Draft', cls: 'bg-surface-light text-text-dim', icon: null as React.ReactNode },
-    calibrating: { text: 'Calibrating', cls: 'bg-surface-light text-warning', icon: <Loader2 size={12} className="animate-spin" /> },
-    live: { text: 'Live', cls: 'bg-primary/20 text-primary', icon: <CheckCircle size={12} /> },
-    rejected: { text: 'Rejected', cls: 'bg-danger/20 text-danger', icon: <XCircle size={12} /> },
-  } as const;
+  const map: Record<CustomGame['status'], { state: VisualState; label: string }> = {
+    draft: { state: 'recovering', label: 'Draft' },
+    calibrating: { state: 'warning', label: 'Calibrating' },
+    live: { state: 'secure', label: 'Live' },
+    rejected: { state: 'failed', label: 'Rejected' },
+  };
   const m = map[status];
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${m.cls}`}>
-      {m.icon}
-      {m.text}
-    </span>
-  );
+  return <StateBadge state={m.state} label={m.label} compact />;
 };

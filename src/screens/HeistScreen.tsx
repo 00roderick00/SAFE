@@ -231,7 +231,13 @@ export const HeistScreen = () => {
             >
               <div className="dossier-card__head">
                 <TargetSafeGraphic size={62} difficulty={target.difficultyBand} />
-                <div className="dossier-card__identity"><span className="eyebrow">{practice ? 'PRACTICE BOT' : 'LIVE VAULT'}</span><strong>{target.ownerName}</strong><small>{target.tagline || 'Encrypted target signature'}</small></div>
+                <div className="dossier-card__identity">
+                  <span className="eyebrow">{practice ? 'PRACTICE BOT' : 'LIVE VAULT'}</span>
+                  <strong>{target.ownerName}</strong>
+                  {target.tagline && (
+                    <em className="dossier-card__flavor" title="Callsign — flavor text, not a game state">“{target.tagline}”</em>
+                  )}
+                </div>
                 <span className={`difficulty-mark difficulty-mark--${target.difficultyBand}`}><i aria-hidden="true" />{difficultyCopy[target.difficultyBand]}</span>
               </div>
               <div className="dossier-locks" aria-label={`${target.securityLoadout.modules.length} equipped locks`}>

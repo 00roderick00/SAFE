@@ -1639,6 +1639,9 @@ input:focus-visible,
 .dossier-card__identity { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .dossier-card__identity strong { overflow: hidden; font-family: var(--font-display); font-size: 18px; font-weight: 900; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
 .dossier-card__identity small { overflow: hidden; color: var(--color-text-dim); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+/* Flavor callsign — italic + quoted so it can't be misread as a status
+   label (UX-FINDINGS P2.2: "Untouchable" reading as "can't attack"). */
+.dossier-card__flavor { overflow: hidden; margin-top: 3px; max-width: 100%; color: var(--color-text-dim); font-size: 10px; font-style: italic; letter-spacing: .01em; opacity: .75; text-overflow: ellipsis; white-space: nowrap; }
 .difficulty-mark { max-width: 72px; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--difficulty-color); font-size: 10px; font-weight: 800; line-height: 1.2; text-align: center; text-transform: uppercase; }
 .difficulty-mark i { width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-bottom: 16px solid currentColor; }
 
@@ -1928,3 +1931,32 @@ input:focus-visible,
 @media (max-height: 700px) {
   .minigame-chrome__stage { min-height: 245px; }.pattern-board { max-width: 260px; }.tetris-board { max-width: 180px; }.safe-dial-game { max-width: 225px; }.safe-dial-game__wheel { transform: scale(.82); }.dial-code-rail { margin-top: -12px; }
 }
+
+/* ── Operations log (History) — noir restyle (UX-FINDINGS P2.1) ─────── */
+.log-screen { padding: 4px 16px 28px; }
+.log-screen > main { display: flex; flex-direction: column; gap: 20px; }
+.log-list { display: flex; flex-direction: column; gap: 9px; margin-top: 10px; }
+.log-entry { padding: 0; }
+.log-entry__body { width: 100%; display: flex; align-items: center; gap: 11px; padding: 12px; border: 0; text-align: left; background: transparent; color: var(--color-text); }
+.log-entry--tap .log-entry__body { cursor: pointer; }
+.log-entry__body > svg { flex: none; color: var(--state-color); }
+.log-entry__copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.log-entry__copy strong { font-size: 13px; font-weight: 700; }
+.log-entry__copy span { color: var(--color-text-dim); font-size: 11px; line-height: 1.35; }
+.log-entry__copy small { display: inline-flex; align-items: center; gap: 4px; color: var(--color-text-dim); font-size: 10px; }
+.log-entry__title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.log-entry__title strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-amount { flex: none; font-family: var(--font-display); font-size: 15px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.log-amount--gain { color: var(--safe-secure); }
+.log-amount--loss { color: var(--safe-danger); }
+.log-empty { margin-top: 10px; padding: 20px 16px; display: flex; flex-direction: column; gap: 5px; }
+.log-empty strong { font-size: 14px; }
+.log-empty span { color: var(--color-text-dim); font-size: 12px; line-height: 1.4; }
+
+/* ── AI workshop (Custom Games) — noir restyle (UX-FINDINGS P2.1) ───── */
+.workshop-screen { min-height: 100dvh; padding: 0 16px 40px; }
+.workshop-header { gap: 8px; }
+.workshop-header > div { flex: 1; min-width: 0; padding-left: 12px; }
+.workshop-header__actions { flex: none; display: flex; align-items: center; gap: 8px; }
+.workshop-build { min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px; border-radius: 3px; font-size: 13px; }
+.workshop-main { display: flex; flex-direction: column; padding-top: 6px; }

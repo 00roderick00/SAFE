@@ -1,14 +1,7 @@
 import { motion } from 'framer-motion';
-import {
-  Swords,
-  Shield,
-  CheckCircle,
-  XCircle,
-  Clock,
-} from 'lucide-react';
+import { Swords, Shield, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { PageHeader } from '../components/Layout';
-import { Card } from '../components/ui';
+import { StateBadge, StateFrame, type VisualState } from '../components/game';
 import { useGameStore } from '../store/gameStore';
 import { AttackResult, DefenseEvent } from '../types';
 
@@ -16,248 +9,127 @@ type HistoryItem =
   | { type: 'attack'; data: AttackResult }
   | { type: 'defense'; data: DefenseEvent };
 
-export const HistoryScreen = () => {
-  const { attackHistory, defenseHistory, notifications, markNotificationRead } =
-    useGameStore();
+const formatTime = (timestamp: number) => formatDistanceToNow(timestamp, { addSuffix: true });
 
-  // Combine and sort by timestamp
+export const HistoryScreen = () => {
+  const { attackHistory, defenseHistory, notifications, markNotificationRead } = useGameStore();
+
   const allHistory: HistoryItem[] = [
     ...attackHistory.map((a) => ({ type: 'attack' as const, data: a })),
     ...defenseHistory.map((d) => ({ type: 'defense' as const, data: d })),
   ].sort((a, b) => b.data.timestamp - a.data.timestamp);
 
-  const formatTime = (timestamp: number) => {
-    return formatDistanceToNow(timestamp, { addSuffix: true });
-  };
+  const unread = notifications.filter((n) => !n.read);
 
   return (
-    <div className="px-4 pb-8">
-      <PageHeader
-        title="History"
-        subtitle="Your attack and defense logs"
-      />
+    <div className="log-screen">
+      <header className="tactical-header">
+        <div>
+          <p className="eyebrow">OPERATIONS LOG</p>
+          <h1>History</h1>
+        </div>
+        <StateBadge state="secure" label={`${allHistory.length} logged`} compact />
+      </header>
 
-      {/* Unread Notifications */}
-      {notifications.filter((n) => !n.read).length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
-          <h2 className="font-display text-sm font-semibold text-text-dim mb-2 uppercase tracking-wider">
-            New Events
-          </h2>
-          <div className="space-y-2">
-            {notifications
-              .filter((n) => !n.read)
-              .slice(0, 3)
-              .map((notification) => (
-                <Card
-                  key={notification.id}
-                  variant="elevated"
-                  padding="sm"
-                  className="border-l-4 border-l-primary"
-                  onClick={() => markNotificationRead(notification.id)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`p-2 rounded-lg ${
-                        notification.type.includes('success')
-                          ? 'bg-primary/10'
-                          : 'bg-danger/10'
-                      }`}
-                    >
-                      {notification.type.includes('success') ? (
-                        <CheckCircle
-                          size={18}
-                          className="text-primary"
-                        />
-                      ) : (
-                        <XCircle size={18} className="text-danger" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-text text-sm">
-                        {notification.title}
-                      </p>
-                      <p className="text-xs text-text-dim mt-0.5 line-clamp-2">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-text-dim/50 mt-1">
-                        {formatTime(notification.timestamp)}
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-          </div>
-        </motion.div>
-      )}
-
-      {/* History List */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <h2 className="font-display text-sm font-semibold text-text-dim mb-3 uppercase tracking-wider">
-          Activity Log
-        </h2>
-
-        {allHistory.length === 0 ? (
-          <Card variant="default" padding="lg" className="text-center">
-            <p className="text-text-dim">No activity yet</p>
-            <p className="text-sm text-text-dim/50 mt-1">
-              Enter Heist Mode to start attacking and defending
-            </p>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {allHistory.map((item, index) => {
-              if (item.type === 'attack') {
-                const attack = item.data;
+      <main>
+        {unread.length > 0 && (
+          <section aria-label="New events">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">UNREAD</p>
+                <h2>New events</h2>
+              </div>
+            </div>
+            <div className="log-list">
+              {unread.slice(0, 3).map((n) => {
+                const good = n.type.includes('success');
                 return (
-                  <motion.div
-                    key={attack.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
+                  <StateFrame
+                    key={n.id}
+                    state={good ? 'secure' : 'failed'}
+                    className="log-entry log-entry--tap"
+                    label={n.title}
                   >
-                    <Card variant="default" padding="sm">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`p-2 rounded-lg ${
-                            attack.success
-                              ? 'bg-primary/10'
-                              : 'bg-danger/10'
-                          }`}
-                        >
-                          <Swords
-                            size={20}
-                            className={
-                              attack.success
-                                ? 'text-primary'
-                                : 'text-danger'
-                            }
-                          />
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-text text-sm">
-                              Attacked {attack.targetName}
-                            </span>
-                            {attack.success ? (
-                              <CheckCircle
-                                size={14}
-                                className="text-primary"
-                              />
-                            ) : (
-                              <XCircle
-                                size={14}
-                                className="text-danger"
-                              />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-text-dim">
-                            <span className="flex items-center gap-1">
-                              <Clock size={12} />
-                              {formatTime(attack.timestamp)}
-                            </span>
-                            <span>
-                              Score: {Math.round(attack.totalScore * 100)}%
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          {attack.success ? (
-                            <span className="font-display font-bold text-primary">
-                              +{attack.lootGained}
-                            </span>
-                          ) : (
-                            <span className="font-display font-bold text-danger">
-                              -{attack.stakePaid}
-                            </span>
-                          )}
-                        </div>
+                    <button className="log-entry__body" onClick={() => markNotificationRead(n.id)}>
+                      <StateBadge state={good ? 'secure' : 'failed'} label={good ? 'Update' : 'Alert'} compact />
+                      <div className="log-entry__copy">
+                        <strong>{n.title}</strong>
+                        <span>{n.message}</span>
+                        <small><Clock size={11} /> {formatTime(n.timestamp)}</small>
                       </div>
-                    </Card>
-                  </motion.div>
+                    </button>
+                  </StateFrame>
                 );
-              } else {
-                const defense = item.data;
-                return (
-                  <motion.div
-                    key={defense.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <Card variant="default" padding="sm">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`p-2 rounded-lg ${
-                            defense.success
-                              ? 'bg-primary/10'
-                              : 'bg-danger/10'
-                          }`}
-                        >
-                          <Shield
-                            size={20}
-                            className={
-                              defense.success
-                                ? 'text-primary'
-                                : 'text-danger'
-                            }
-                          />
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-text text-sm">
-                              Defended from {defense.attackerName}
-                            </span>
-                            {defense.success ? (
-                              <CheckCircle
-                                size={14}
-                                className="text-primary"
-                              />
-                            ) : (
-                              <XCircle
-                                size={14}
-                                className="text-danger"
-                              />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-text-dim">
-                            <span className="flex items-center gap-1">
-                              <Clock size={12} />
-                              {formatTime(defense.timestamp)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          {defense.success ? (
-                            <span className="font-display font-bold text-primary">
-                              +{defense.feeEarned}
-                            </span>
-                          ) : (
-                            <span className="font-display font-bold text-danger">
-                              -{defense.lootLost}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
-                );
-              }
-            })}
-          </div>
+              })}
+            </div>
+          </section>
         )}
-      </motion.div>
+
+        <section aria-label="Activity log">
+          <div className="section-title-row">
+            <div>
+              <p className="eyebrow">ACTIVITY</p>
+              <h2>Attack &amp; defense log</h2>
+            </div>
+          </div>
+
+          {allHistory.length === 0 ? (
+            <StateFrame state="recovering" className="log-empty" label="No activity yet">
+              <strong>No activity yet</strong>
+              <span>Enter exposure to start attacking and defending — settled fights land here.</span>
+            </StateFrame>
+          ) : (
+            <div className="log-list">
+              {allHistory.map((item, index) => {
+                if (item.type === 'attack') {
+                  const a = item.data;
+                  const state: VisualState = a.success ? 'cracked' : 'failed';
+                  return (
+                    <motion.div key={a.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(index * 0.03, 0.2) }}>
+                      <StateFrame state={state} className="log-entry" label={`Attack on ${a.targetName}`}>
+                        <div className="log-entry__body">
+                          <Swords size={18} aria-hidden="true" />
+                          <div className="log-entry__copy">
+                            <div className="log-entry__title">
+                              <strong>Attacked {a.targetName}</strong>
+                              <StateBadge state={state} label={a.success ? 'Breached' : 'Repelled'} compact />
+                            </div>
+                            <small><Clock size={11} /> {formatTime(a.timestamp)} · Score {Math.round(a.totalScore * 100)}%</small>
+                          </div>
+                          <b className={a.success ? 'log-amount log-amount--gain' : 'log-amount log-amount--loss'}>
+                            {a.success ? `+${a.lootGained}` : `-${a.stakePaid}`}
+                          </b>
+                        </div>
+                      </StateFrame>
+                    </motion.div>
+                  );
+                }
+                const d = item.data;
+                const state: VisualState = d.success ? 'secure' : 'breached';
+                return (
+                  <motion.div key={d.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(index * 0.03, 0.2) }}>
+                    <StateFrame state={state} className="log-entry" label={`Defense against ${d.attackerName}`}>
+                      <div className="log-entry__body">
+                        <Shield size={18} aria-hidden="true" />
+                        <div className="log-entry__copy">
+                          <div className="log-entry__title">
+                            <strong>Defended from {d.attackerName}</strong>
+                            <StateBadge state={state} label={d.success ? 'Held' : 'Breached'} compact />
+                          </div>
+                          <small><Clock size={11} /> {formatTime(d.timestamp)}</small>
+                        </div>
+                        <b className={d.success ? 'log-amount log-amount--gain' : 'log-amount log-amount--loss'}>
+                          {d.success ? `+${d.feeEarned}` : `-${d.lootLost}`}
+                        </b>
+                      </div>
+                    </StateFrame>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 };
