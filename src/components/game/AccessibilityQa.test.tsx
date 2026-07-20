@@ -29,6 +29,25 @@ describe('game presentation accessibility QA', () => {
     expect(screen.getAllByRole('button', { name: /Lock \d:/i })).toHaveLength(3);
   });
 
+  it('renders the balance readout as a sibling BELOW the vault, not overlaid on it', () => {
+    render(<SafeGraphic state="secure" balance={2_500} locks={locks} />);
+    const figure = screen.getByRole('group', { name: /Vault secure/i });
+    const readout = screen.getByText('SECURED BALANCE').closest('.tactical-vault__readout') as HTMLElement;
+    expect(readout).not.toBeNull();
+    // Not an absolutely-positioned child of the vault figure anymore…
+    expect(figure).not.toContainElement(readout);
+    // …but a sibling inside the shared block wrapper, after the figure.
+    const block = figure.parentElement;
+    expect(block).toHaveClass('tactical-vault-block');
+    expect(block).toContainElement(readout);
+    expect(figure.compareDocumentPosition(readout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('labels the readout VAULT BALANCE when the vault is not secure', () => {
+    render(<SafeGraphic state="exposed" balance={2_500} />);
+    expect(screen.getByText('VAULT BALANCE')).toBeInTheDocument();
+  });
+
   it('exposes breach and minigame completion as progress bars', () => {
     render(<>
       <BreachHud

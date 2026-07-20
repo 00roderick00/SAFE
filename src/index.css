@@ -1332,6 +1332,17 @@ input:focus-visible,
   text-transform: uppercase;
 }
 
+/* Wraps the vault figure and the balance readout so the readout can sit
+   as its own block BELOW the safe instead of being plastered on top of
+   it. The vault CSS custom props live here so both the figure and the
+   readout (a sibling) inherit --vault-state / --vault-size. */
+.tactical-vault-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
 .tactical-vault {
   position: relative;
   width: min(100%, var(--vault-size));
@@ -1360,18 +1371,16 @@ input:focus-visible,
 .tactical-vault__bolt--displaced { transform: translate(7px, -5px) rotate(14deg); }
 
 .tactical-vault__readout {
-  position: absolute;
-  z-index: 5;
-  left: 50%;
-  /* Sits above lock slot 3 (anchored at bottom 1%, ~50px tall) so the
-     balance digits are never covered by the lock badge. */
-  bottom: 21%;
-  min-width: 128px;
-  transform: translateX(-50%);
+  /* Its own centered block directly under the safe — no longer overlaid
+     on the vault graphic, so it can never sit on top of lock slot 3. */
+  margin-top: 16px;
+  min-width: 148px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 6px 10px;
+  text-align: center;
+  gap: 2px;
+  padding: 8px 16px;
   border: 1px solid color-mix(in srgb, var(--vault-state), transparent 48%);
   color: var(--vault-state);
   background: rgba(5, 7, 5, 0.92);
@@ -1880,7 +1889,7 @@ input:focus-visible,
 .interactive-onboarding.onboarding-exposure { background: radial-gradient(circle at 50% 24%, rgba(255,174,66,.08), transparent 25rem), var(--safe-metal-0); }
 .onboarding-header { min-height: calc(66px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); display: flex; align-items: center; justify-content: space-between; gap: 12px; }.onboarding-header > div { min-width: 0; display: flex; flex-direction: column; }.onboarding-header strong { overflow: hidden; color: var(--color-text-secondary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.onboarding-header button { flex: none; padding: 0 10px; color: var(--color-text-dim); background: transparent; font-size: 11px; }
 .onboarding-progress { width: min(100%, 620px); margin: 0 auto; display: grid; grid-template-columns: repeat(4,1fr); gap: 4px; }.onboarding-progress > span { position: relative; min-width: 0; height: 38px; display: flex; align-items: center; gap: 4px; border-top: 2px solid var(--color-border); color: var(--color-text-dim); }.onboarding-progress b { width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 8px; }.onboarding-progress small { overflow: hidden; font-size: 7px; font-weight: 800; text-overflow: ellipsis; text-transform: uppercase; }.onboarding-progress .active { color: var(--safe-warning); border-color: var(--safe-warning); }.onboarding-progress .complete { color: var(--safe-secure); border-color: var(--safe-secure); }
-.interactive-onboarding > main { width: min(100%, 560px); margin: 0 auto; }.tutorial-panel { text-align: center; }.tutorial-vault-wrap { width: min(100%, 330px); height: 310px; margin: -4px auto -2px; display: grid; place-items: center; }.tutorial-vault-wrap--small { height: 248px; }.tutorial-panel > h1 { margin: 10px 0 4px; font-family: var(--font-display); font-size: clamp(26px,8vw,34px); font-weight: 900; letter-spacing: -.03em; text-transform: uppercase; }.tutorial-panel > p { max-width: 460px; margin: 0 auto 12px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.48; }
+.interactive-onboarding > main { width: min(100%, 560px); margin: 0 auto; }.tutorial-panel { text-align: center; }.tutorial-vault-wrap { width: min(100%, 330px); min-height: 310px; margin: -4px auto -2px; display: grid; place-items: center; }.tutorial-vault-wrap--small { min-height: 248px; }.tutorial-panel > h1 { margin: 10px 0 4px; font-family: var(--font-display); font-size: clamp(26px,8vw,34px); font-weight: 900; letter-spacing: -.03em; text-transform: uppercase; }.tutorial-panel > p { max-width: 460px; margin: 0 auto 12px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.48; }
 .inspect-lock { width: 100%; min-height: 68px; padding: 10px 12px; display: grid; grid-template-columns: 32px 1fr 24px; align-items: center; gap: 9px; border: 1px dashed var(--safe-warning); color: var(--color-text); background: rgba(255,174,66,.05); text-align: left; }.inspect-lock > span { display: flex; flex-direction: column; }.inspect-lock small { color: var(--safe-warning); font-size: 8px; font-weight: 900; letter-spacing: .08em; }.inspect-lock strong { font-size: 13px; }.inspect-lock.inspected { color: var(--safe-secure); border-style: solid; border-color: var(--safe-secure); background: rgba(216,255,69,.05); }.inspect-lock.inspected small { color: var(--safe-secure); }
 .tutorial-note { min-height: 52px; margin-top: 8px; padding: 10px; display: flex; align-items: center; gap: 8px; color: var(--state-color); text-align: left; }.tutorial-note span { color: var(--color-text-secondary); font-size: 10px; line-height: 1.35; }.tutorial-primary { width: 100%; min-height: 54px; margin-top: 10px; gap: 8px; border-radius: 3px; }.tutorial-primary:disabled { opacity: .35; }
 .practice-lock-demo { position: relative; width: min(100%, 330px); height: 245px; margin: 22px auto 12px; display: flex; align-items: center; justify-content: space-around; border: 1px solid var(--color-border); background: radial-gradient(circle, rgba(216,255,69,.06), transparent 65%), var(--safe-metal-1); }.practice-lock-demo > button { position: relative; z-index: 2; width: 62px; height: 62px; display: grid; place-items: center; border: 2px solid var(--color-border-light); border-radius: 50%; color: var(--color-text); background: #0a0d0a; }.practice-lock-demo > button > span { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-weight: 900; }.practice-lock-demo > button.hit { color: var(--safe-secure); border-color: var(--safe-secure); box-shadow: 0 0 18px rgba(216,255,69,.18); }.practice-route { position: absolute; z-index: 1; left: 50px; right: 50px; top: 50%; height: 3px; background: var(--color-border); }.practice-route i { position: absolute; width: 50%; height: 100%; left: 0; background: var(--safe-secure); transform: scaleX(0); transform-origin: left; transition: transform .35s; }.practice-route i:nth-child(2) { left: 50%; }.practice-route--1 i:first-child, .practice-route--2 i:first-child, .practice-route--3 i { transform: scaleX(1); }
@@ -1891,7 +1900,7 @@ input:focus-visible,
 .tutorial-name { display: flex; flex-direction: column; gap: 4px; text-align: left; }.tutorial-name span { color: var(--color-text-dim); font-size: 9px; font-weight: 800; text-transform: uppercase; }.tutorial-name input { width: 100%; height: 48px; padding: 0 12px; border: 1px solid var(--color-border); color: var(--color-text); background: var(--safe-metal-1); outline: none; }.tutorial-name input:focus { border-color: var(--safe-secure); }.tutorial-auth-note { margin: 8px auto 0 !important; color: var(--color-text-dim) !important; font-size: 9px !important; line-height: 1.35 !important; }
 
 @media (max-height: 720px) {
-  .tutorial-vault-wrap { height: 250px; }.tutorial-vault-wrap .tactical-vault { max-width: 260px; }.tutorial-panel > h1 { font-size: 24px; }.practice-lock-demo { height: 190px; margin-top: 10px; }
+  .tutorial-vault-wrap { min-height: 250px; }.tutorial-vault-wrap .tactical-vault { max-width: 260px; }.tutorial-panel > h1 { font-size: 24px; }.practice-lock-demo { height: 190px; margin-top: 10px; }
 }
 
 /* Shared minigame chrome + representative vertical slice */

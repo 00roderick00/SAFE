@@ -45,9 +45,12 @@ export const SafeGraphic = ({
   const dialMotion = reduceMotion || secure || breached ? 0 : state === 'attacking' ? 360 : 90;
 
   return (
+    <div
+      className="tactical-vault-block"
+      style={{ '--vault-size': `${size}px`, '--vault-state': stateColor } as React.CSSProperties}
+    >
     <figure
       className={`tactical-vault tactical-vault--${state}`}
-      style={{ '--vault-size': `${size}px`, '--vault-state': stateColor } as React.CSSProperties}
       role="group"
       aria-label={`${STATE_LABELS[state]}${balance === undefined ? '' : ` with ${balance.toLocaleString()} tokens`}`}
     >
@@ -141,13 +144,6 @@ export const SafeGraphic = ({
           {breached && <path d="M211 57l-17 39 21 20-24 37 18 25" fill="none" stroke="#fff" strokeWidth="3" />}
         </svg>
 
-        {balance !== undefined && (
-          <div className="tactical-vault__readout" aria-hidden="true">
-            <span>{state === 'secure' ? 'SECURED BALANCE' : 'VAULT BALANCE'}</span>
-            <strong>{formatBalance(balance)} <small>TK</small></strong>
-          </div>
-        )}
-
         {state === 'exposed' && <AlertTriangle className="tactical-vault__state-mark" aria-hidden="true" />}
         {state === 'secure' && <ShieldCheck className="tactical-vault__state-mark" aria-hidden="true" />}
         {state === 'recovering' && <Wrench className="tactical-vault__state-mark" aria-hidden="true" />}
@@ -167,6 +163,14 @@ export const SafeGraphic = ({
       </motion.div>
       <figcaption className="sr-only">{STATE_LABELS[state]}</figcaption>
     </figure>
+
+    {balance !== undefined && (
+      <div className="tactical-vault__readout" aria-hidden="true">
+        <span>{state === 'secure' ? 'SECURED BALANCE' : 'VAULT BALANCE'}</span>
+        <strong>{formatBalance(balance)} <small>TK</small></strong>
+      </div>
+    )}
+    </div>
   );
 };
 
