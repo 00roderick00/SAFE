@@ -231,17 +231,24 @@ export const AttackScreen = () => {
   }, [remainingTime, phase, attackStartedAt]);
 
   const handleCancel = useCallback(() => {
-    // Already settled (or settling) → the outcome is on screen; just leave.
-    if (settlement || phase === 'settling' || phase === 'outcome') {
+    // Recap already on screen → leave to the heist list.
+    if (phase === 'outcome') {
       resetHeist();
       navigate('/heist');
       return;
     }
-    // Backing out mid-attack still forfeits the committed stake. Route it
+    // A settlement is already in flight (notably the async server
+    // round-trip, which sits in the 'settling' phase). Do NOT bail to
+    // /heist and skip the recap — let it resolve into the outcome screen.
+    // This is the server-path gap in UX-FINDINGS P1.2: the old guard
+    // navigated away during 'settling', so signed-in abandons never
+    // showed "Attack abandoned".
+    if (settlingRef.current) return;
+    // Active attack → abandoning forfeits the committed stake. Route it
     // through the SAME outcome recap as a played loss instead of silently
-    // dropping the balance. UX-FINDINGS P1.2.
+    // dropping the balance.
     void settleAttack(true);
-  }, [settlement, phase, settleAttack, resetHeist, navigate]);
+  }, [phase, settleAttack, resetHeist, navigate]);
 
   const seed = useMemo(() => {
     if (currentModule?.seed) return currentModule.seed;

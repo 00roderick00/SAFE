@@ -4,7 +4,7 @@
  * showing the forfeited stake. Also asserts the abandon is logged to
  * History (P1.1).
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -105,6 +105,113 @@ describe('abandoning an attack shows the loss recap', () => {
   it('the recap continue button leaves to the heist screen', () => {
     renderAttack();
     fireEvent.click(screen.getByRole('button', { name: /Abandon attack/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Leave heist' }));
+    expect(screen.getByText('HEIST ROUTE')).toBeInTheDocument();
+  });
+});
+
+// --- SERVER path (signed in) ---------------------------------------
+// When signed in, attacks go through startServerAttack/completeServerAttack.
+// Abandoning must still land on the outcome recap (async settlement) and
+// must NOT auto-navigate to /heist. UX-FINDINGS P1.2 (server path).
+const serverPayload = {
+  attackId: 'srv-1',
+  status: 'lost' as const,
+  loot: 0,
+  platformFee: 0,
+  stake: 31,
+  newBalance: 969,
+  modules: [],
+};
+
+function seedServerAttack(completeServerAttack: () => Promise<unknown>) {
+  useHeistStore.setState({
+    currentTarget: null,
+    currentModuleIndex: 0,
+    moduleResults: [],
+    attackStartedAt: Date.now(),
+    stakePaid: 31,
+    serverAttack: {
+      attackId: 'srv-1',
+      defenderHandle: 'roderick.jones',
+      isBotTarget: false,
+      stake: 31,
+      potentialLoot: 200,
+      modules: [{ index: 0, moduleType: 'pattern', difficulty: 0.4, seed: 's0' }],
+    },
+    completeServerAttack: completeServerAttack as never,
+  });
+}
+
+function renderScreen() {
+  return render(
+    <MemoryRouter initialEntries={['/attack']}>
+      <Routes>
+        <Route path="/attack" element={<AttackScreen />} />
+        <Route path="/heist" element={<div>HEIST ROUTE</div>} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
+describe('abandoning a SERVER attack shows the loss recap', () => {
+  it('renders the outcome recap (not /heist) after the async settlement', async () => {
+    const completeServerAttack = vi.fn().mockResolvedValue(serverPayload);
+    seedServerAttack(completeServerAttack);
+    renderScreen();
+
+    fireEvent.click(screen.getByRole('button', { name: /Abandon attack/i }));
+
+    await waitFor(() => expect(completeServerAttack).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('heading', { name: 'Attack abandoned' })).toBeInTheDocument();
+    expect(screen.getByText('STAKE FORFEITED').parentElement).toHaveTextContent('-31 TK');
+
+    // Crucially: it did NOT auto-navigate to the heist screen.
+    expect(screen.queryByText('HEIST ROUTE')).not.toBeInTheDocument();
+
+    // Logged to History as a loss.
+    const history = useGameStore.getState().attackHistory;
+    expect(history).toHaveLength(1);
+    expect(history[0].success).toBe(false);
+    expect(history[0].stakePaid).toBe(31);
+  });
+
+  it('does NOT navigate to /heist if back is pressed again while settling', async () => {
+    // A deferred settlement keeps the screen in the async 'settling'
+    // phase so we can press back mid-flight — the old guard bailed to
+    // /heist here and skipped the recap.
+    let resolveSettle: (v: unknown) => void = () => {};
+    const completeServerAttack = vi.fn().mockImplementation(
+      () => new Promise((resolve) => { resolveSettle = resolve; })
+    );
+    seedServerAttack(completeServerAttack);
+    renderScreen();
+
+    const back = screen.getByRole('button', { name: /Abandon attack/i });
+    fireEvent.click(back);
+
+    // We're mid-settlement (server round-trip not yet resolved).
+    expect(await screen.findByText('VERIFYING RUN')).toBeInTheDocument();
+    expect(completeServerAttack).toHaveBeenCalledTimes(1);
+
+    // Impatient second back-press during settling must NOT leave.
+    fireEvent.click(back);
+    expect(screen.queryByText('HEIST ROUTE')).not.toBeInTheDocument();
+    // And it must not kick off a second settlement.
+    expect(completeServerAttack).toHaveBeenCalledTimes(1);
+
+    // Resolve the settlement → recap appears, still no navigation.
+    await act(async () => { resolveSettle(serverPayload); });
+    expect(await screen.findByRole('heading', { name: 'Attack abandoned' })).toBeInTheDocument();
+    expect(screen.queryByText('HEIST ROUTE')).not.toBeInTheDocument();
+  });
+
+  it('leaves to /heist only when the recap continue button is pressed', async () => {
+    seedServerAttack(vi.fn().mockResolvedValue(serverPayload));
+    renderScreen();
+    fireEvent.click(screen.getByRole('button', { name: /Abandon attack/i }));
+    await screen.findByRole('heading', { name: 'Attack abandoned' });
+    expect(screen.queryByText('HEIST ROUTE')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Leave heist' }));
     expect(screen.getByText('HEIST ROUTE')).toBeInTheDocument();
   });
