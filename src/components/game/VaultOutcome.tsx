@@ -9,6 +9,7 @@ export const VaultOutcome = ({
   grossLoot,
   platformFee,
   netLoot,
+  abandoned = false,
 }: {
   success: boolean;
   target: string;
@@ -16,6 +17,9 @@ export const VaultOutcome = ({
   grossLoot: number;
   platformFee: number;
   netLoot: number;
+  /** True when the run was abandoned mid-attack rather than played out;
+   *  changes the loss copy so the forfeited stake is explained. */
+  abandoned?: boolean;
 }) => {
   const reducedMotion = useReducedMotion();
   return (
@@ -32,12 +36,12 @@ export const VaultOutcome = ({
         </motion.div>
         {success ? <DoorOpen className="outcome-vault__mark" /> : <LockKeyhole className="outcome-vault__mark" />}
       </div>
-      <StateBadge state={success ? 'breached' : 'failed'} label={success ? 'Full breach' : 'Vault sealed'} />
-      <h2>{success ? `${target} breached` : 'Heist terminated'}</h2>
+      <StateBadge state={success ? 'breached' : 'failed'} label={success ? 'Full breach' : abandoned ? 'Attack abandoned' : 'Vault sealed'} />
+      <h2>{success ? `${target} breached` : abandoned ? 'Attack abandoned' : 'Heist terminated'}</h2>
       {success ? (
         <div className="outcome-reward"><Coins size={24} /><span>NET LOOT RECEIVED</span><strong>+{Math.round(netLoot).toLocaleString()} TK</strong></div>
       ) : (
-        <div className="outcome-loss"><AlertTriangle size={24} /><span>STAKE DEDUCTED</span><strong>-{Math.round(stake).toLocaleString()} TK</strong><small>One lock held. Every lock is required for a payout.</small></div>
+        <div className="outcome-loss"><AlertTriangle size={24} /><span>{abandoned ? 'STAKE FORFEITED' : 'STAKE DEDUCTED'}</span><strong>-{Math.round(stake).toLocaleString()} TK</strong><small>{abandoned ? 'You backed out — the committed stake is forfeited.' : 'One lock held. Every lock is required for a payout.'}</small></div>
       )}
       {success && (
         <dl className="outcome-settlement">

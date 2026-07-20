@@ -6,6 +6,7 @@ import { BreachHud, GameIcon, VaultOutcome, type BreachRailLock } from '../compo
 import { MiniGameHost, preloadMiniGames } from '../components/minigames';
 import { MODULE_CONFIG } from '../game/constants';
 import { calculateLootDistribution } from '../game/economy';
+import { buildServerAttackResult } from '../game/history';
 import { getMiniGameBrief, getModuleDuration } from '../game/minigamePresentation';
 import { getPayoutPresentation } from '../game/presentation';
 import { api } from '../services/api';
@@ -25,6 +26,8 @@ interface SettlementView {
   grossLoot: number;
   platformFee: number;
   netLoot: number;
+  /** Run was abandoned mid-attack rather than played to a loss. */
+  abandoned?: boolean;
 }
 
 const seenBriefings = new Set<ModuleType>();
@@ -123,7 +126,7 @@ export const AttackScreen = () => {
     if (safe) usePlayerStore.setState({ safeBalance: safe.balance });
   }, []);
 
-  const settleAttack = useCallback(async () => {
+  const settleAttack = useCallback(async (abandoned = false) => {
     if (settlingRef.current) return;
     settlingRef.current = true;
     setPhase('settling');
@@ -134,6 +137,11 @@ export const AttackScreen = () => {
         await rehydrateBalance(payload.newBalance);
         const success = payload.status === 'won';
         const netLoot = success ? payload.loot - payload.platformFee : 0;
+        // Record the settled server attack in History (both sides log to
+        // the same activity list). UX-FINDINGS P1.1.
+        addAttackResult(
+          buildServerAttackResult(payload, { attackId: serverAttack!.attackId, targetName }, Date.now())
+        );
         if (success) {
           recordSuccessfulHeist();
           updateRiskRating(15);
@@ -146,10 +154,10 @@ export const AttackScreen = () => {
           haptics.error();
           gameAudio.play('fail');
         }
-        setSettlement({ success, stake: payload.stake, grossLoot: payload.loot, platformFee: payload.platformFee, netLoot });
+        setSettlement({ success, stake: payload.stake, grossLoot: payload.loot, platformFee: payload.platformFee, netLoot, abandoned: abandoned && !success });
       } catch (error) {
         addNotification({ type: 'attack_fail', title: 'Settlement rejected', message: error instanceof Error ? error.message : 'Server refused this result.' });
-        setSettlement({ success: false, stake: stakePaid, grossLoot: 0, platformFee: 0, netLoot: 0 });
+        setSettlement({ success: false, stake: stakePaid, grossLoot: 0, platformFee: 0, netLoot: 0, abandoned });
       }
       setPhase('outcome');
       return;
@@ -157,7 +165,7 @@ export const AttackScreen = () => {
 
     const result = completeAttack();
     if (!result) {
-      setSettlement({ success: false, stake: stakePaid, grossLoot: 0, platformFee: 0, netLoot: 0 });
+      setSettlement({ success: false, stake: stakePaid, grossLoot: 0, platformFee: 0, netLoot: 0, abandoned });
       setPhase('outcome');
       return;
     }
@@ -176,9 +184,9 @@ export const AttackScreen = () => {
       haptics.error();
       gameAudio.play('fail');
     }
-    setSettlement({ success: result.success, stake: result.stakePaid, grossLoot: result.success ? result.lootGained + result.platformFee : 0, platformFee: result.platformFee, netLoot: result.lootGained });
+    setSettlement({ success: result.success, stake: result.stakePaid, grossLoot: result.success ? result.lootGained + result.platformFee : 0, platformFee: result.platformFee, netLoot: result.lootGained, abandoned: abandoned && !result.success });
     setPhase('outcome');
-  }, [isServerAttack, completeServerAttack, rehydrateBalance, recordSuccessfulHeist, updateRiskRating, addNotification, targetName, stakePaid, completeAttack, addAttackResult, updateBotCooldown, addEarnings]);
+  }, [isServerAttack, serverAttack, completeServerAttack, rehydrateBalance, recordSuccessfulHeist, updateRiskRating, addNotification, targetName, stakePaid, completeAttack, addAttackResult, updateBotCooldown, addEarnings]);
 
   const handleModuleComplete = useCallback((result: MiniGameResult) => {
     recordModuleResult(result);
@@ -222,18 +230,18 @@ export const AttackScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remainingTime, phase, attackStartedAt]);
 
-  const handleCancel = useCallback(async () => {
-    if (isServerAttack && !settlement) {
-      try {
-        const payload = await completeServerAttack();
-        if (payload) await rehydrateBalance(payload.newBalance);
-      } catch (error) {
-        console.warn('[cancel] settlement failed', error);
-      }
+  const handleCancel = useCallback(() => {
+    // Already settled (or settling) → the outcome is on screen; just leave.
+    if (settlement || phase === 'settling' || phase === 'outcome') {
+      resetHeist();
+      navigate('/heist');
+      return;
     }
-    resetHeist();
-    navigate('/heist');
-  }, [isServerAttack, settlement, completeServerAttack, rehydrateBalance, resetHeist, navigate]);
+    // Backing out mid-attack still forfeits the committed stake. Route it
+    // through the SAME outcome recap as a played loss instead of silently
+    // dropping the balance. UX-FINDINGS P1.2.
+    void settleAttack(true);
+  }, [settlement, phase, settleAttack, resetHeist, navigate]);
 
   const seed = useMemo(() => {
     if (currentModule?.seed) return currentModule.seed;
@@ -331,8 +339,8 @@ export const AttackScreen = () => {
 
           {phase === 'outcome' && settlement && (
             <motion.section key="outcome" className="outcome-panel" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }}>
-              <VaultOutcome success={settlement.success} target={targetName} stake={settlement.stake} grossLoot={settlement.grossLoot} platformFee={settlement.platformFee} netLoot={settlement.netLoot} />
-              <button className={settlement.success ? 'btn-neon outcome-continue' : 'btn-danger outcome-continue'} onClick={leaveOutcome}>{settlement.success ? 'Secure reward & find next target' : 'Acknowledge loss'}</button>
+              <VaultOutcome success={settlement.success} target={targetName} stake={settlement.stake} grossLoot={settlement.grossLoot} platformFee={settlement.platformFee} netLoot={settlement.netLoot} abandoned={settlement.abandoned} />
+              <button className={settlement.success ? 'btn-neon outcome-continue' : 'btn-danger outcome-continue'} onClick={leaveOutcome}>{settlement.success ? 'Secure reward & find next target' : settlement.abandoned ? 'Leave heist' : 'Acknowledge loss'}</button>
             </motion.section>
           )}
         </AnimatePresence>

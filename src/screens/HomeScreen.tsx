@@ -19,6 +19,7 @@ import { filterDataByRange } from '../components/earningsData';
 import { SafeGraphic, type VaultState } from '../components/SafeGraphic';
 import { StateBadge, StateFrame } from '../components/game';
 import { calculateEconomyStats } from '../game/economy';
+import { buildServerDefenseEvent } from '../game/history';
 import { buildBalanceHistory } from '../game/presentation';
 import { api } from '../services/api';
 import { useSession } from '../services/useSession';
@@ -114,6 +115,9 @@ export const HomeScreen = () => {
           const result = await api.resolveDefense();
           if (!result.attacked) return;
           if (typeof result.newBalance === 'number') usePlayerStore.setState({ safeBalance: result.newBalance });
+          // Log the server-resolved defense to History (not just a
+          // transient notification). UX-FINDINGS P1.1.
+          addDefenseEvent(buildServerDefenseEvent(result, Date.now()));
           addNotification({
             type: result.success ? 'defense_success' : 'defense_fail',
             title: result.success ? 'Attack repelled' : 'Vault breached',
