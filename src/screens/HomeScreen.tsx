@@ -197,6 +197,7 @@ export const HomeScreen = () => {
             state={vaultState}
             balance={safeBalance}
             locks={securityLoadout.modules}
+            insured={insured}
             onLockSelect={(index) => navigate(`/security/pick/${index}`)}
           />
         </motion.div>

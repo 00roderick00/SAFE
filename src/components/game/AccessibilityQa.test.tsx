@@ -48,6 +48,19 @@ describe('game presentation accessibility QA', () => {
     expect(screen.getByText('VAULT BALANCE')).toBeInTheDocument();
   });
 
+  it('draws a temporary shield layer and announces insurance when insured', () => {
+    const { container } = render(<SafeGraphic state="secure" balance={2_500} insured />);
+    expect(screen.getByRole('group', { name: /Vault secure, insured/i })).toBeInTheDocument();
+    expect(container.querySelector('.tactical-vault__shield')).not.toBeNull();
+  });
+
+  it('omits the shield layer and the insured label when not insured', () => {
+    const { container } = render(<SafeGraphic state="secure" balance={2_500} />);
+    expect(screen.getByRole('group', { name: /Vault secure with 2,500 tokens/i })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /insured/i })).not.toBeInTheDocument();
+    expect(container.querySelector('.tactical-vault__shield')).toBeNull();
+  });
+
   it('exposes breach and minigame completion as progress bars', () => {
     render(<>
       <BreachHud

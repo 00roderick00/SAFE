@@ -13,6 +13,9 @@ interface SafeGraphicProps {
   balance?: number;
   locks?: SecurityModule[];
   onLockSelect?: (index: number) => void;
+  /** Active insurance draws a temporary hexagonal shield layer around
+   *  the vault (a distinct cool tint, separate from the state color). */
+  insured?: boolean;
 }
 
 const formatBalance = (amount: number): string => {
@@ -36,6 +39,7 @@ export const SafeGraphic = ({
   balance,
   locks = [],
   onLockSelect,
+  insured = false,
 }: SafeGraphicProps) => {
   const reduceMotion = useReducedMotion();
   const state: VaultState = explicitState ?? (isBeingAttacked ? 'attacking' : isVulnerable ? 'exposed' : 'secure');
@@ -46,13 +50,13 @@ export const SafeGraphic = ({
 
   return (
     <div
-      className="tactical-vault-block"
+      className={`tactical-vault-block${insured ? ' tactical-vault-block--insured' : ''}`}
       style={{ '--vault-size': `${size}px`, '--vault-state': stateColor } as React.CSSProperties}
     >
     <figure
-      className={`tactical-vault tactical-vault--${state}`}
+      className={`tactical-vault tactical-vault--${state}${insured ? ' tactical-vault--insured' : ''}`}
       role="group"
-      aria-label={`${STATE_LABELS[state]}${balance === undefined ? '' : ` with ${balance.toLocaleString()} tokens`}`}
+      aria-label={`${STATE_LABELS[state]}${insured ? ', insured' : ''}${balance === undefined ? '' : ` with ${balance.toLocaleString()} tokens`}`}
     >
       <motion.div
         className="tactical-vault__assembly"
@@ -81,6 +85,24 @@ export const SafeGraphic = ({
           <path d="M48 20h224l28 28v224l-28 28H48l-28-28V48z" fill="#050705" stroke="#2d332d" strokeWidth="4" />
           <path d="M54 29h212l24 24v212l-24 24H54l-24-24V53z" fill="url(#frame-metal)" stroke={stateColor} strokeOpacity=".45" strokeWidth="2" />
           <path d="M67 46h186l20 20v188l-20 20H67l-20-20V66z" fill="#090b09" stroke="#424942" />
+
+          {insured && (
+            <g className="tactical-vault__shield" aria-hidden="true">
+              <motion.path
+                d="M160 14 L34 87 L34 233 L160 306 L286 233 L286 87 Z"
+                fill="none"
+                stroke="#7fe3ff"
+                strokeWidth="2.5"
+                strokeDasharray="7 8"
+                strokeLinejoin="round"
+                animate={reduceMotion ? { opacity: 0.55 } : { opacity: [0.3, 0.78, 0.3] }}
+                transition={reduceMotion ? undefined : { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              {[[160, 14], [34, 87], [286, 87], [34, 233], [286, 233], [160, 306]].map(([cx, cy]) => (
+                <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="4" fill="#7fe3ff" opacity="0.7" />
+              ))}
+            </g>
+          )}
 
           {[{x: 45,y:45},{x:275,y:45},{x:45,y:275},{x:275,y:275}].map((bolt, index) => (
             <g key={index} className={breached && index === 1 ? 'tactical-vault__bolt--displaced' : ''}>

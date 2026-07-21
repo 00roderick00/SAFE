@@ -24,16 +24,36 @@ export const VaultOutcome = ({
   const reducedMotion = useReducedMotion();
   return (
     <div className={`vault-outcome vault-outcome--${success ? 'breached' : 'sealed'}`}>
-      <div className="outcome-vault" aria-hidden="true">
+      <div className={`outcome-vault${success ? ' outcome-vault--open' : ''}`} aria-hidden="true">
         <div className="outcome-vault__frame" />
+        {/* Interior token chamber, revealed as the door swings open. */}
+        {success && (
+          <div className="outcome-vault__chamber">
+            {[0, 1, 2, 3].map((i) => <span key={i} className="chamber-coin" style={{ '--i': i } as React.CSSProperties} />)}
+          </div>
+        )}
         <motion.div
           className="outcome-vault__door"
           initial={false}
-          animate={reducedMotion ? undefined : success ? { x: 58, rotate: 12 } : { scale: [1.06, .96, 1], x: [0, -5, 4, 0] }}
+          animate={reducedMotion ? (success ? { x: 58, rotate: 12 } : undefined) : success ? { x: 58, rotate: 12 } : { scale: [1.06, .96, 1], x: [0, -5, 4, 0] }}
           transition={{ duration: .72, type: 'spring', damping: 16 }}
         >
           <i /><b />
         </motion.div>
+        {/* Loot visibly transfers out of the target vault toward the attacker. */}
+        {success && !reducedMotion && (
+          <div className="outcome-loot-stream">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <motion.span
+                key={i}
+                className="loot-coin"
+                initial={{ opacity: 0, x: 0, y: 0, scale: 0.6 }}
+                animate={{ opacity: [0, 1, 1, 0], x: [0, 6, 30, 62], y: [0, -26, -58, -96], scale: [0.6, 1, 1, 0.7] }}
+                transition={{ duration: 1.1, delay: 0.5 + i * 0.14, ease: 'easeOut' }}
+              />
+            ))}
+          </div>
+        )}
         {success ? <DoorOpen className="outcome-vault__mark" /> : <LockKeyhole className="outcome-vault__mark" />}
       </div>
       <StateBadge state={success ? 'breached' : 'failed'} label={success ? 'Full breach' : abandoned ? 'Attack abandoned' : 'Vault sealed'} />

@@ -1461,6 +1461,9 @@ input:focus-visible,
 }
 
 .tactical-vault--breached .tactical-vault__assembly { filter: drop-shadow(0 0 10px rgba(255, 91, 50, .28)); }
+/* Insurance shield: a cool temporary layer, distinct from the state color. */
+.tactical-vault--insured .tactical-vault__assembly { filter: drop-shadow(0 0 9px rgba(127, 227, 255, .22)); }
+.tactical-vault__shield { pointer-events: none; }
 
 @keyframes vault-scan {
   0%, 100% { transform: translateY(0); opacity: .1; }
@@ -1790,7 +1793,14 @@ input:focus-visible,
 .outcome-vault__frame { position: absolute; inset: 10px 20px; border: 12px solid #333a33; background: #030503; box-shadow: inset 0 0 30px rgba(216,255,69,.12); }
 .outcome-vault__door { position: absolute; inset: 17px 27px; display: grid; place-items: center; border: 4px solid #535b53; background: radial-gradient(circle, #262c26, #0b0e0b 68%); transform-origin: left center; }
 .outcome-vault__door i { width: 70px; height: 70px; border: 3px solid currentColor; border-radius: 50%; }.outcome-vault__door b { position: absolute; width: 7px; height: 38px; right: 18px; background: #697269; }
-.outcome-vault__mark { position: absolute; z-index: 3; inset: 0; margin: auto; color: var(--safe-secure); filter: drop-shadow(0 0 8px currentColor); }
+.outcome-vault__door { z-index: 2; }
+.outcome-vault__mark { position: absolute; z-index: 5; inset: 0; margin: auto; color: var(--safe-secure); filter: drop-shadow(0 0 8px currentColor); }
+/* Interior token chamber revealed behind the opening door (win only). */
+.outcome-vault__chamber { position: absolute; z-index: 1; inset: 26px 32px 24px; display: flex; align-items: flex-end; justify-content: center; gap: 5px; }
+.chamber-coin { width: 15px; height: 15px; border-radius: 50%; background: radial-gradient(circle at 38% 32%, #ffe98a, #e8b23c 58%, #9a6f1c); box-shadow: inset 0 -2px 3px rgba(0,0,0,.4), 0 0 5px rgba(232,178,60,.5); transform: translateY(calc(var(--i) * -3px)); }
+/* Loot transferring out of the target vault toward the attacker (win only). */
+.outcome-loot-stream { position: absolute; z-index: 4; left: 42%; top: 54%; width: 0; height: 0; }
+.loot-coin { position: absolute; width: 13px; height: 13px; border-radius: 50%; background: radial-gradient(circle at 38% 32%, #ffe98a, #e8b23c 58%, #9a6f1c); box-shadow: 0 0 6px rgba(232,178,60,.75); }
 .vault-outcome--sealed .outcome-vault__mark { color: var(--safe-danger); }
 .vault-outcome h2 { margin: 9px 0 5px; font-family: var(--font-display); font-size: 27px; font-weight: 900; text-transform: uppercase; }
 .outcome-subhead { margin: 0 0 14px; color: var(--color-text-secondary); font-size: 13px; line-height: 1.4; }
