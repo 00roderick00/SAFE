@@ -63,14 +63,19 @@ describe('heist briefing, dossier, and confirmation QA', () => {
         </Routes>
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole('button', { name: /Start heist exposure/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Expose for .* minutes/i }));
     const dossier = await screen.findByRole('button', { name: /Night Warden.*net payout/i });
-    expect(dossier).toHaveTextContent(`GROSS LOOT${Math.round(payout.grossLoot).toLocaleString()} TK`);
-    expect(dossier).toHaveTextContent(`PLATFORM CUT-${Math.round(payout.platformCut).toLocaleString()} TK`);
-    expect(dossier).toHaveTextContent(`NET WIN${Math.round(payout.netPayout).toLocaleString()} TK`);
+    // Card shows only the decision-critical Risk + Potential win…
+    expect(dossier).toHaveTextContent(`Risk${target.attackFee.toLocaleString()} TK`);
+    expect(dossier).toHaveTextContent(`Potential win${Math.round(payout.netPayout).toLocaleString()} TK`);
+    // …the gross/platform-cut breakdown moved into the confirmation sheet.
+    expect(dossier).not.toHaveTextContent(/GROSS LOOT/i);
     fireEvent.click(dossier);
-    expect(screen.getByRole('dialog', { name: /Engage Night Warden/i })).toHaveTextContent(`Final net payout${Math.round(payout.netPayout).toLocaleString()} TK`);
-    fireEvent.click(screen.getByRole('button', { name: /Commit stake/i }));
+    const dialog = screen.getByRole('dialog', { name: /Attack Night Warden/i });
+    expect(dialog).toHaveTextContent(`Gross loot${Math.round(payout.grossLoot).toLocaleString()} TK`);
+    expect(dialog).toHaveTextContent(`Platform cut-${Math.round(payout.platformCut).toLocaleString()} TK`);
+    expect(dialog).toHaveTextContent(`Final net payout${Math.round(payout.netPayout).toLocaleString()} TK`);
+    fireEvent.click(screen.getByRole('button', { name: /Risk .* TK/i }));
     expect(await screen.findByText('ATTACK ROUTE')).toBeInTheDocument();
     expect(usePlayerStore.getState().safeBalance).toBe(balanceBefore - target.attackFee);
   });

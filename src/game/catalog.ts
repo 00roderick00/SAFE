@@ -15,6 +15,33 @@ export interface CatalogMeta {
   control: 'Touch / pointer' | 'Touch + keyboard' | 'Keyboard + touch';
 }
 
+// Launch roster (Section 4). A curated, launch-quality set spanning
+// different skills. This is an honest curation status — NOT fabricated
+// calibration/performance data — surfaced as a player-facing badge in
+// place of the misleading "Calibration pending" on every built-in.
+export const FEATURED_GAMES = new Set<ModuleType>([
+  'pattern',  // Precision / memory reference quality
+  'safedial', // Precision reference quality
+  'timing',   // Reflex / precision
+  'wire',     // Logic routing
+  'maze',     // Logic navigation
+  'cipher',   // Logic decoding
+  'tetris',   // Stack Breach — stack-based arcade reference quality
+  'reaction', // original reflex game
+]);
+
+export type GameStatus = 'featured' | 'experimental';
+
+/** Player-facing curation status for a built-in game. */
+export function getGameStatus(type: ModuleType): { status: GameStatus; label: string } {
+  const featured = FEATURED_GAMES.has(type);
+  return { status: featured ? 'featured' : 'experimental', label: featured ? 'Featured' : 'Experimental' };
+}
+
+export function isFeatured(type: ModuleType): boolean {
+  return FEATURED_GAMES.has(type);
+}
+
 export function getCatalogMeta(type: ModuleType): CatalogMeta {
   const skills: SkillTag[] = [];
   if (REFLEX.has(type)) skills.push('Reflex');

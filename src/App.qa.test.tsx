@@ -18,9 +18,9 @@ beforeEach(() => {
 describe('application authentication boundary QA', () => {
   it('teaches the game before requiring authentication', () => {
     render(<App />);
-    expect(screen.getByRole('button', { name: 'Skip tutorial' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Skip to sign in' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Skip tutorial' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Skip to sign in' }));
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
   });
 
@@ -41,7 +41,10 @@ describe('application authentication boundary QA', () => {
   it('limits credential-free visual QA access to the development-only query', async () => {
     window.history.replaceState({}, '', '/?visualQa=1');
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Command vault' })).toBeInTheDocument();
+    // Longer timeout: under full-suite load the HomeScreen heading can
+    // take >1s to settle through its mount effects, which made the
+    // default 1000ms findBy intermittently time out.
+    expect(await screen.findByRole('heading', { name: 'Command vault' }, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
   });
 });

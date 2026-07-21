@@ -11,7 +11,8 @@
     "test:watch": "vitest --configLoader runner",
     "test:coverage": "vitest run --configLoader runner --coverage",
     "preview": "vite preview",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "verify-repo": "bash scripts/verify-repo.sh"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

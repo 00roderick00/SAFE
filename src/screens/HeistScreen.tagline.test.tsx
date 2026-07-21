@@ -44,7 +44,7 @@ beforeEach(() => {
 describe('bot tagline is presented as flavor, not status', () => {
   it('renders the tagline as an italic quoted callsign, separate from status', async () => {
     render(<MemoryRouter><HeistScreen /></MemoryRouter>);
-    fireEvent.click(screen.getByRole('button', { name: /Start heist exposure/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Expose for .* minutes/i }));
 
     const flavor = await screen.findByText(/Untouchable/);
     // It's the dedicated flavor element (em), quoted, not a status badge.

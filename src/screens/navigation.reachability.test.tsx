@@ -135,12 +135,14 @@ describe('Slot picker offers custom/community games', () => {
   it('lists a live community game as an equippable option', async () => {
     listMarketplaceGames.mockResolvedValue([COMMUNITY_GAME]);
     renderPicker();
-    // The community game tile appears alongside the built-in modules.
+    // The picker opens on the current lock's category; switch to Community.
+    fireEvent.click(screen.getByRole('button', { name: 'Community' }));
     expect(await screen.findByText('Warden Run')).toBeInTheDocument();
   });
 
   it('has a "Browse all" link that reaches the marketplace', async () => {
     renderPicker();
+    fireEvent.click(screen.getByRole('button', { name: 'Community' }));
     fireEvent.click(await screen.findByText('Browse all'));
     await waitFor(() => expect(screen.getByText('MARKETPLACE SCREEN')).toBeInTheDocument());
   });
@@ -149,10 +151,11 @@ describe('Slot picker offers custom/community games', () => {
     renderPicker();
     fireEvent.click(screen.getByRole('button', { name: 'Arcade' }));
     const search = screen.getByRole('searchbox', { name: 'Search games' });
-    fireEvent.change(search, { target: { value: 'Tetris' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Tetris to favorites' }));
+    // "tetris" is internally preserved but publicly de-branded to "Stack Breach".
+    fireEvent.change(search, { target: { value: 'Stack Breach' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Stack Breach to favorites' }));
     fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Select Tetris' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select Stack Breach' }));
 
     const difficulty = screen.getByRole('slider', { name: /Difficulty/i });
     fireEvent.change(difficulty, { target: { value: '0.78' } });
@@ -160,7 +163,8 @@ describe('Slot picker offers custom/community games', () => {
     fireEvent.click(screen.getByRole('button', { name: /Save lock/i }));
 
     await waitFor(() => expect(screen.getByText('SECURITY SCREEN')).toBeInTheDocument());
-    expect(usePlayerStore.getState().securityLoadout.modules[0]).toMatchObject({ type: 'tetris', difficulty: .78, name: 'Tetris' });
+    // Internal id stays "tetris" (backward compatibility); public name is new.
+    expect(usePlayerStore.getState().securityLoadout.modules[0]).toMatchObject({ type: 'tetris', difficulty: .78, name: 'Stack Breach' });
     expect(updateLoadout).toHaveBeenCalledTimes(1);
   });
 });

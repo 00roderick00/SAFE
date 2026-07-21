@@ -163,9 +163,9 @@ export const CustomGameScreen = () => {
       <main className="workshop-main">
         <div className="card-clean p-4 mb-6">
           <p className="text-sm text-text-dim">
-            Describe a variant of one of our engines and the AI will propose a config.
-            Every game is calibrated before it can guard a safe — solve rate must land
-            in the 30-70% band. AI output is validated as data, never executed.
+            Describe the defense you want and pick a base mechanism. We build it,
+            then run a fairness check — a game only goes live if it's beatable but
+            not too easy, so it's fair for both you and attackers.
           </p>
         </div>
 

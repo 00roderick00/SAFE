@@ -37,7 +37,8 @@ export const VaultOutcome = ({
         {success ? <DoorOpen className="outcome-vault__mark" /> : <LockKeyhole className="outcome-vault__mark" />}
       </div>
       <StateBadge state={success ? 'breached' : 'failed'} label={success ? 'Full breach' : abandoned ? 'Attack abandoned' : 'Vault sealed'} />
-      <h2>{success ? `${target} breached` : abandoned ? 'Attack abandoned' : 'Heist terminated'}</h2>
+      <h2>{success ? `You won ${Math.round(netLoot).toLocaleString()} TK` : `You lost ${Math.round(stake).toLocaleString()} TK`}</h2>
+      <p className="outcome-subhead">{success ? `You cracked all three locks on ${target}.` : abandoned ? 'You backed out after committing the stake.' : `A lock on ${target} held.`}</p>
       {success ? (
         <div className="outcome-reward"><Coins size={24} /><span>NET LOOT RECEIVED</span><strong>+{Math.round(netLoot).toLocaleString()} TK</strong></div>
       ) : (

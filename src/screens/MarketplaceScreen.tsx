@@ -11,6 +11,7 @@ import { api, type PublicCustomGame } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { supabase } from '../services/supabaseClient';
 import { buildCustomModule } from '../game/loadout';
+import { filterDisplayableListings } from '../game/listingSafety';
 import { sanitizeUserText } from '../utils/sanitize';
 
 export const MarketplaceScreen = () => {
@@ -30,7 +31,9 @@ export const MarketplaceScreen = () => {
     (async () => {
       try {
         const rows = await api.listMarketplaceGames(30);
-        if (!cancelled) setGames(rows);
+        // Defense-in-depth: never surface injection/test/garbage listings
+        // publicly, even if calibration passed (Section 9).
+        if (!cancelled) setGames(filterDisplayableListings(rows));
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : 'Failed to load');
       } finally {

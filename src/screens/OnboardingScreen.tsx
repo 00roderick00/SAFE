@@ -47,7 +47,7 @@ export const OnboardingScreen = ({ onComplete }: OnboardingScreenProps) => {
     <div className={`interactive-onboarding onboarding-${step}`}>
       <header className="onboarding-header">
         <div><p className="eyebrow">SAFE // FIELD TRAINING</p><strong>60–90 SECOND TUTORIAL</strong></div>
-        <button onClick={finish}>Skip tutorial</button>
+        <button onClick={finish}>Skip to sign in</button>
       </header>
       <div className="onboarding-progress" aria-label={`Tutorial step ${stepIndex + 1} of ${STEPS.length}`}>
         {STEPS.map((item, index) => <span key={item} className={index < stepIndex ? 'complete' : index === stepIndex ? 'active' : ''}><b>{index + 1}</b><small>{item}</small></span>)}
@@ -60,13 +60,13 @@ export const OnboardingScreen = ({ onComplete }: OnboardingScreenProps) => {
               <>
                 <div className="tutorial-vault-wrap"><SafeGraphic size={300} state="secure" balance={safeBalance} locks={securityLoadout.modules} onLockSelect={() => { setInspected(true); haptics.selection(); }} /></div>
                 <StateBadge state="secure" label="Your vault" />
-                <h1>Build the defense.</h1>
-                <p>Your balance sits behind three playable locks. Attackers must crack every one.</p>
+                <h1>Protect your tokens</h1>
+                <p>Your tokens sit behind three lock games. An attacker has to beat all three to steal them. Tap a lock to see it.</p>
                 <button className={`inspect-lock ${inspected ? 'inspected' : ''}`} onClick={() => { setInspected(true); haptics.selection(); }}>
                   <GameIcon type={securityLoadout.modules[0].type} size={24} /><span><small>LOCK 1 · PERIMETER</small><strong>{securityLoadout.modules[0].name}</strong></span>{inspected ? <Check /> : <ArrowRight />}
                 </button>
-                {inspected && <StateFrame state="secure" className="tutorial-note" label="Lock inspected"><Shield size={18} /><span>Difficulty changes how demanding this lock feels to an attacker.</span></StateFrame>}
-                <button className="tutorial-primary btn-neon" onClick={next} disabled={!inspected}>Inspect a lock to continue <ArrowRight size={18} /></button>
+                {inspected && <StateFrame state="secure" className="tutorial-note" label="Lock inspected"><Shield size={18} /><span>Difficulty sets how hard this lock is to crack.</span></StateFrame>}
+                <button className="tutorial-primary btn-neon" onClick={next} disabled={!inspected}>{inspected ? 'Continue' : 'Tap a lock to continue'} <ArrowRight size={18} /></button>
               </>
             )}
 
@@ -90,9 +90,9 @@ export const OnboardingScreen = ({ onComplete }: OnboardingScreenProps) => {
                 <div className="tutorial-vault-wrap"><SafeGraphic size={300} state="breached" balance={safeBalance} locks={securityLoadout.modules} /></div>
                 <StateBadge state="breached" label="All locks cracked" />
                 <h1>The vault opens.</h1>
-                <p>One cracked lock advances the rail. Crack all three and the door opens through a verified mechanical sequence.</p>
+                <p>Each lock you crack pulls back a bolt. Crack all three and the vault door swings open.</p>
                 <div className="tutorial-rail">{securityLoadout.modules.map((module, index) => <span key={module.id}><GameIcon type={module.type} /><b>LOCK {index + 1}</b><small>Cracked</small></span>)}</div>
-                <StateFrame state="cracked" className="tutorial-note" label="Successful breach effect"><Sparkles size={18} /><span>Success reveals a settlement—not an invented reward.</span></StateFrame>
+                <StateFrame state="cracked" className="tutorial-note" label="Successful breach effect"><Sparkles size={18} /><span>Crack every lock and you win the loot from their vault.</span></StateFrame>
                 <button className="tutorial-primary btn-neon" onClick={next}>Learn the risk <ArrowRight size={18} /></button>
               </>
             )}
@@ -102,14 +102,14 @@ export const OnboardingScreen = ({ onComplete }: OnboardingScreenProps) => {
                 <div className="tutorial-vault-wrap tutorial-vault-wrap--small"><SafeGraphic size={240} state="exposed" balance={safeBalance} locks={securityLoadout.modules} /></div>
                 <StateBadge state="exposed" label="Exposure explained" />
                 <h1>Choose when to risk it.</h1>
-                <p>Heist mode lasts {ECONOMY.heistDuration / 60} minutes. While you choose and attack a target, your own safe can also be attacked.</p>
+                <p>Expose your vault for {ECONOMY.heistDuration / 60} minutes to go after other players. While you're exposed, your own vault can be attacked too.</p>
                 <div className="tutorial-settlement">
                   <StateFrame state="failed" label="Failed raid"><AlertTriangle /><small>FAIL ANY LOCK</small><strong>Lose the stake</strong></StateFrame>
                   <StateFrame state="cracked" label="Successful raid"><Crosshair /><small>CRACK EVERY LOCK</small><strong>Win {Math.round(examplePayout.netPayout).toLocaleString()} TK net</strong><span>{Math.round(examplePayout.grossLoot)} gross − {Math.round(examplePayout.platformCut)} platform cut</span></StateFrame>
                 </div>
                 <label className="tutorial-name"><span>Optional callsign</span><input value={username} onChange={(event) => setUsernameInput(event.target.value)} maxLength={20} placeholder="Enter a name" /></label>
-                <button className="tutorial-primary btn-neon" onClick={finish}><LockKeyhole size={18} /> Enter SAFE</button>
-                <p className="tutorial-auth-note">You can understand and practice the loop before sign-in. Authentication is required next for persistent multiplayer state.</p>
+                <button className="tutorial-primary btn-neon" onClick={finish}><LockKeyhole size={18} /> Continue to sign in</button>
+                <p className="tutorial-auth-note">You've seen the whole loop. Next, sign in to save your vault and play against real players.</p>
               </>
             )}
           </motion.section>

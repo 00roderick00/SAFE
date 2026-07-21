@@ -16,10 +16,11 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { GameEmblem, StateBadge } from '../components/game';
 import { MiniGameHost } from '../components/minigames';
-import { getCatalogMeta } from '../game/catalog';
+import { getCatalogMeta, getGameStatus } from '../game/catalog';
 import { ALL_MODULE_TYPES, MODULE_CONFIG } from '../game/constants';
 import { calculateModuleStrength } from '../game/economy';
 import { buildCustomModule } from '../game/loadout';
+import { filterDisplayableListings } from '../game/listingSafety';
 import { api, type CustomGame } from '../services/api';
 import { supabase } from '../services/supabaseClient';
 import { useSession } from '../services/useSession';
@@ -49,7 +50,18 @@ export const GamePickerScreen = () => {
   const [selectedType, setSelectedType] = useState<ModuleType>(currentModule?.type || 'pattern');
   const [selectedCustom, setSelectedCustom] = useState<CustomGame | null>(null);
   const [difficulty, setDifficulty] = useState(currentModule?.difficulty ?? .5);
-  const [activeTab, setActiveTab] = useState<PickerTab>('community');
+  // Open on the current lock's own category (or Community for a custom
+  // game) instead of a usually-empty Community tab. A fresh lock defaults
+  // to the on-brand Locks category. (Section 6 behavior correction.)
+  const initialTab: PickerTab = (() => {
+    if (currentModule?.customGameId || currentModule?.customConfig) return 'community';
+    const category = currentModule?.type
+      ? (MODULE_CONFIG[currentModule.type as keyof typeof MODULE_CONFIG] as { category?: string } | undefined)?.category
+      : undefined;
+    if (category === 'arcade' || category === 'puzzle' || category === 'classic') return category;
+    return 'classic';
+  })();
+  const [activeTab, setActiveTab] = useState<PickerTab>(initialTab);
   const [search, setSearch] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [recent, setRecent] = useState<ModuleType[]>(() => securityLoadout.modules.map((module) => module.type));
@@ -65,7 +77,8 @@ export const GamePickerScreen = () => {
         const own = session?.user?.id ? (await api.listOwnCustomGames(session.user.id)).filter((game) => game.status === 'live') : [];
         const unique = new Map<string, CustomGame>();
         for (const game of [...own, ...market]) unique.set(game.id, game);
-        if (!cancelled) setCustomGames([...unique.values()]);
+        // Defense-in-depth: hide injection/test/garbage listings (Section 9).
+        if (!cancelled) setCustomGames(filterDisplayableListings([...unique.values()]));
       } catch {
         if (!cancelled) setCustomGames([]);
       }
@@ -215,8 +228,8 @@ export const GamePickerScreen = () => {
                   <GameEmblem type={type} /><div className="rich-game-card__copy"><span className="eyebrow">{config.category}</span><h3>{config.name}</h3><p>{config.description}</p></div>
                 </button>
                 <button className="favorite-button" onClick={() => toggleFavorite(type)} aria-label={favorite ? `Remove ${config.name} from favorites` : `Add ${config.name} to favorites`} aria-pressed={favorite}><Heart size={18} fill={favorite ? 'currentColor' : 'none'} /></button>
-                <div className="game-card-meta"><span>{meta.skills.join(' · ')}</span><span>~{meta.duration}s</span><span>{meta.control}</span><span>Calibration pending</span></div>
-                <div className="game-card-states">{equipped && <StateBadge state="secure" label="Equipped" compact />}{selected && <StateBadge state="cracked" label="Selected" compact />}{recent.includes(type) && <span className="recent-tag">Recent</span>}</div>
+                <div className="game-card-meta"><span>{meta.skills.join(' · ')}</span><span>~{meta.duration}s</span><span>{meta.control}</span><span>{getGameStatus(type).label}</span></div>
+                <div className="game-card-states">{equipped && <StateBadge state="secure" label="Equipped" compact />}{selected && <StateBadge state="cracked" label="Selected" compact />}{getGameStatus(type).status === 'featured' && <StateBadge state="secure" label="Featured" compact />}{recent.includes(type) && <span className="recent-tag">Recent</span>}</div>
               </motion.article>
             );
           })}

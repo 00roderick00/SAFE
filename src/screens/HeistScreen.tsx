@@ -161,7 +161,7 @@ export const HeistScreen = () => {
       <div className="heist-briefing">
         <header className="tactical-header">
           <button className="icon-button" onClick={() => navigate('/')} aria-label="Back to vault"><ArrowLeft size={21} /></button>
-          <div className="text-right"><p className="eyebrow">OPERATION BRIEF</p><h1>Exposure protocol</h1></div>
+          <div className="text-right"><p className="eyebrow">OPERATION BRIEF</p><h1>Expose your vault</h1></div>
         </header>
         <main>
           <div className="briefing-visual" aria-hidden="true">
@@ -178,8 +178,8 @@ export const HeistScreen = () => {
             <StateFrame state="attacking" label="Attack rule"><Crosshair /><span>Attack condition</span><strong>Your safe can be attacked</strong></StateFrame>
           </div>
           <div className="risk-equation"><span>FAIL A RAID</span><b>STAKE LOST</b><i aria-hidden="true" /> <span>CRACK ALL LOCKS</span><b>NET LOOT PAID</b></div>
-          <button className="briefing-start btn-danger" onClick={handleStartExposure}><Crosshair size={19} /> Start heist exposure</button>
-          <button className="text-button briefing-cancel" onClick={() => navigate('/')}>Return secure</button>
+          <button className="briefing-start btn-danger" onClick={handleStartExposure}><Crosshair size={19} /> Expose for {ECONOMY.heistDuration / 60} minutes</button>
+          <button className="text-button briefing-cancel" onClick={() => navigate('/')}>Not now — stay secure</button>
         </main>
       </div>
     );
@@ -189,7 +189,7 @@ export const HeistScreen = () => {
     <div className="heist-dossiers danger-mode">
       <header className="tactical-header sticky-heist-header">
         <button className="icon-button" onClick={() => navigate('/')} aria-label="Back to vault"><ArrowLeft size={21} /></button>
-        <div><p className="eyebrow">TARGET ACQUISITION</p><h1>Vault dossiers</h1></div>
+        <div><p className="eyebrow">TARGET ACQUISITION</p><h1>Choose a target</h1></div>
         <button className={`icon-button ${refreshing ? 'is-scanning' : ''}`} onClick={handleRefresh} disabled={refreshing} aria-label="Refresh targets"><RefreshCw size={20} /></button>
       </header>
 
@@ -243,11 +243,9 @@ export const HeistScreen = () => {
               <div className="dossier-locks" aria-label={`${target.securityLoadout.modules.length} equipped locks`}>
                 {target.securityLoadout.modules.map((module, lockIndex) => <span key={module.id}><GameIcon type={module.type} size={18} /><b>{lockIndex + 1}</b><small>{module.name}</small></span>)}
               </div>
-              <div className="dossier-economy">
-                <span><small>STAKE / LOSS</small><b className={affordable ? '' : 'text-loss'}>{formatTokens(target.attackFee)}</b></span>
-                <span><small>GROSS LOOT</small><b>{formatTokens(payout.grossLoot)}</b></span>
-                <span><small>PLATFORM CUT</small><b>-{formatTokens(payout.platformCut)}</b></span>
-                <span className="dossier-economy__net"><small>NET WIN</small><b>{formatTokens(payout.netPayout)}</b></span>
+              <div className="dossier-economy dossier-economy--simple">
+                <span><small>Risk</small><b className={affordable ? '' : 'text-loss'}>{formatTokens(target.attackFee)}</b></span>
+                <span className="dossier-economy__net"><small>Potential win</small><b>{formatTokens(payout.netPayout)}</b></span>
               </div>
               <div className="dossier-card__foot">
                 <span><Clock3 size={14} /> {formatDuration(getExpectedDuration(target.securityLoadout.modules))}</span>
@@ -275,7 +273,7 @@ export const HeistScreen = () => {
               <motion.section className="attack-sheet" role="dialog" aria-modal="true" aria-labelledby="attack-confirmation-title" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28 }} onClick={(event) => event.stopPropagation()}>
                 <button className="attack-sheet__close icon-button" onClick={() => setSelectedTarget(null)} aria-label="Close attack confirmation"><X size={20} /></button>
                 <p className="eyebrow">FINAL ATTACK CHECK</p>
-                <h2 id="attack-confirmation-title">Engage {selectedTarget.ownerName}?</h2>
+                <h2 id="attack-confirmation-title">Attack {selectedTarget.ownerName}?</h2>
                 <div className="settlement-choice">
                   <StateFrame state="failed" label="Loss outcome"><AlertTriangle /><span>If any lock holds</span><strong>-{formatTokens(selectedTarget.attackFee)} stake</strong></StateFrame>
                   <span className="settlement-choice__or">OR</span>
@@ -283,7 +281,7 @@ export const HeistScreen = () => {
                 </div>
                 <dl className="settlement-breakdown"><div><dt>Gross loot</dt><dd>{formatTokens(payout.grossLoot)}</dd></div><div><dt>Platform cut</dt><dd>-{formatTokens(payout.platformCut)}</dd></div><div><dt>Final net payout</dt><dd>{formatTokens(payout.netPayout)}</dd></div></dl>
                 <p className="attack-sheet__rule"><AlertTriangle size={16} /> The stake is already committed when the attack starts. Abandoning counts as a loss.</p>
-                <div className="attack-sheet__actions"><button className="btn-secondary" onClick={() => setSelectedTarget(null)}>Cancel</button><button className="btn-danger" onClick={handleConfirmAttack}><Crosshair size={18} /> Commit stake</button></div>
+                <div className="attack-sheet__actions"><button className="btn-secondary" onClick={() => setSelectedTarget(null)}>Cancel</button><button className="btn-danger" onClick={handleConfirmAttack}><Crosshair size={18} /> Risk {formatTokens(selectedTarget.attackFee)}</button></div>
               </motion.section>
             </motion.div>
           );

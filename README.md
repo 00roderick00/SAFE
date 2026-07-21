@@ -1,5 +1,11 @@
 # SAFE
 
+> ## ⚠️ Correct repository & branch
+> The production app is the **nested** repo **`~/SAFE/SAFE`** on branch **`codex-rebuild`** (also merged into **`main`**, the production source).
+> The **parent `~/SAFE` is an OBSOLETE build — never build, test, or deploy it as SAFE.**
+> Before any build/deploy, run **`npm run verify-repo`** (non-destructive; exits non-zero if you're in the wrong repo). See `scripts/verify-repo.sh`.
+> Remote: `github.com/00roderick00/SAFE`. Deploy details in `DEPLOY.md`.
+
 SAFE is a neo-noir tactical heist game about building a three-lock vault, exposing it to attack, and breaching other players' defenses. Its primary loop is:
 
 > Build defenses → expose your vault → select a target → crack every lock → win loot or lose the stake → upgrade and defend again.
@@ -24,6 +30,36 @@ Target and settlement screens distinguish all economic values explicitly:
 - **Net payout / net loot**: the amount the attacker receives after the cut.
 
 Economy constants and settlement formulas live in the existing client and Supabase economy modules and are not presentation tunables.
+
+## Game roster: Featured vs Experimental
+
+The defense catalog spans many games of uneven maturity. A curated, launch-quality
+**Featured** roster (`FEATURED_GAMES` in `src/game/catalog.ts`) spans different
+skills — Pattern Lock, Safe Dial, Timing Lock, Wire, Maze, Cipher, Stack Breach,
+and a reflex game. Everything else is **Experimental**. The picker shows this as an
+honest, player-facing badge (`getGameStatus`) — it replaced the misleading
+"Calibration pending" that used to sit on every built-in game. These are curation
+labels, **not** fabricated calibration/performance data.
+
+## Public game names vs internal IDs
+
+SAFE does not commercially rely on recognizable third-party arcade names. The
+arcade games were renamed to original SAFE-owned concepts (e.g. `tetris` →
+**Stack Breach**, `pacman` → **Grid Runner**, `qbert` → **Prism Steps**). The
+**internal module IDs are preserved** for saved loadouts, seeds, and the server
+attack contract — only the player-facing name/description/emblem changed. The
+full internal→public mapping is documented and tested in `src/game/gameNaming.ts`
+(+ `gameNaming.test.ts`), which also asserts no banned third-party term ever
+appears in a public name or description.
+
+## Marketplace safety
+
+Community listings pass write-time server moderation and a second display-time
+filter (`src/game/listingSafety.ts`) so injection/test/garbage listings are never
+shown publicly — calibration success alone cannot make unsafe content visible. All
+displayed user text is sanitized. See `docs/MARKETPLACE_SAFETY.md` (including a
+reviewable, non-executed production data-cleanup procedure for the historical
+"Inject" row).
 
 ## Architecture
 

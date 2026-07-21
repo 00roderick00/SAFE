@@ -1,5 +1,11 @@
 # Deploying SAFE
 
+> ## ⚠️ Deploy ONLY the nested `~/SAFE/SAFE` repo
+> The app that must ship is the **nested** repository **`~/SAFE/SAFE`** on branch **`codex-rebuild`** (merged into **`main`**, the production source).
+> The **parent `~/SAFE` is an obsolete build. Never deploy it.**
+> **Before deploying, run `npm run verify-repo`** — it's read-only and exits non-zero if you are not in the rebuilt app (`scripts/verify-repo.sh`). Suggested: `npm run verify-repo && npm run build`.
+> The Vercel project below is Git-connected to `main`, so a normal deploy is just `git push origin main` from this repo.
+
 ## Production
 
 - **URL:** https://safe-orpin-xi.vercel.app  (stable alias — always points at the latest production deploy)

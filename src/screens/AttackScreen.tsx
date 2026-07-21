@@ -340,20 +340,20 @@ export const AttackScreen = () => {
           {phase === 'settling' && (
             <motion.section key="settling" className="settling-panel" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <ScanSettlement />
-              <p className="eyebrow">VERIFYING RUN</p><h2>Authoritative settlement</h2><p>Lock results are being verified before balances move.</p>
+              <p className="eyebrow">CHECKING YOUR RUN</p><h2>Locking in the result</h2><p>Confirming your locks before any tokens move.</p>
             </motion.section>
           )}
 
           {phase === 'outcome' && settlement && (
             <motion.section key="outcome" className="outcome-panel" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }}>
               <VaultOutcome success={settlement.success} target={targetName} stake={settlement.stake} grossLoot={settlement.grossLoot} platformFee={settlement.platformFee} netLoot={settlement.netLoot} abandoned={settlement.abandoned} />
-              <button className={settlement.success ? 'btn-neon outcome-continue' : 'btn-danger outcome-continue'} onClick={leaveOutcome}>{settlement.success ? 'Secure reward & find next target' : settlement.abandoned ? 'Leave heist' : 'Acknowledge loss'}</button>
+              <button className={settlement.success ? 'btn-neon outcome-continue' : 'btn-danger outcome-continue'} onClick={leaveOutcome}>{settlement.success ? 'Find another target' : settlement.abandoned ? 'Leave heist' : 'Find another target'}</button>
             </motion.section>
           )}
         </AnimatePresence>
       </main>
 
-      {failedIndex >= 0 && phase !== 'outcome' && <div className="breach-consequence"><AlertTriangle size={15} /> Lock {failedIndex + 1} held. Settling stake loss.</div>}
+      {failedIndex >= 0 && phase !== 'outcome' && <div className="breach-consequence"><AlertTriangle size={15} /> Lock {failedIndex + 1} held. You'll lose the stake.</div>}
     </div>
   );
 };

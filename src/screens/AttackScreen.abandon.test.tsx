@@ -91,7 +91,7 @@ describe('abandoning an attack shows the loss recap', () => {
     fireEvent.click(screen.getByRole('button', { name: /Abandon attack/i }));
 
     // The recap is shown (not a silent navigation to /heist).
-    expect(screen.getByRole('heading', { name: 'Attack abandoned' })).toBeInTheDocument();
+    expect(screen.getByText('Attack abandoned')).toBeInTheDocument();
     expect(screen.getByText('STAKE FORFEITED').parentElement).toHaveTextContent(`-${target.attackFee} TK`);
     expect(screen.queryByText('HEIST ROUTE')).not.toBeInTheDocument();
 
@@ -163,7 +163,7 @@ describe('abandoning a SERVER attack shows the loss recap', () => {
     fireEvent.click(screen.getByRole('button', { name: /Abandon attack/i }));
 
     await waitFor(() => expect(completeServerAttack).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole('heading', { name: 'Attack abandoned' })).toBeInTheDocument();
+    expect(await screen.findByText('Attack abandoned')).toBeInTheDocument();
     expect(screen.getByText('STAKE FORFEITED').parentElement).toHaveTextContent('-31 TK');
 
     // Crucially: it did NOT auto-navigate to the heist screen.
@@ -191,7 +191,7 @@ describe('abandoning a SERVER attack shows the loss recap', () => {
     fireEvent.click(back);
 
     // We're mid-settlement (server round-trip not yet resolved).
-    expect(await screen.findByText('VERIFYING RUN')).toBeInTheDocument();
+    expect(await screen.findByText('CHECKING YOUR RUN')).toBeInTheDocument();
     expect(completeServerAttack).toHaveBeenCalledTimes(1);
 
     // Impatient second back-press during settling must NOT leave.
@@ -202,7 +202,7 @@ describe('abandoning a SERVER attack shows the loss recap', () => {
 
     // Resolve the settlement → recap appears, still no navigation.
     await act(async () => { resolveSettle(serverPayload); });
-    expect(await screen.findByRole('heading', { name: 'Attack abandoned' })).toBeInTheDocument();
+    expect(await screen.findByText('Attack abandoned')).toBeInTheDocument();
     expect(screen.queryByText('HEIST ROUTE')).not.toBeInTheDocument();
   });
 
@@ -210,7 +210,7 @@ describe('abandoning a SERVER attack shows the loss recap', () => {
     seedServerAttack(vi.fn().mockResolvedValue(serverPayload));
     renderScreen();
     fireEvent.click(screen.getByRole('button', { name: /Abandon attack/i }));
-    await screen.findByRole('heading', { name: 'Attack abandoned' });
+    await screen.findByText('Attack abandoned');
     expect(screen.queryByText('HEIST ROUTE')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Leave heist' }));
     expect(screen.getByText('HEIST ROUTE')).toBeInTheDocument();
