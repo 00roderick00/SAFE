@@ -42,6 +42,29 @@ export function isFeatured(type: ModuleType): boolean {
   return FEATURED_GAMES.has(type);
 }
 
+// Animated-thumbnail motif (Section 6). Each game maps to one of five
+// mechanic families so its catalog card can show a looping micro-animation
+// that hints at how it actually plays — a dial sweep, a grid runner, a
+// falling stack, a routed path, or a projectile burst.
+export type GameMotif = 'dial' | 'grid' | 'stack' | 'burst' | 'path';
+
+const MOTIF_DIAL = new Set<ModuleType>(['timing', 'safedial', 'rotation', 'reaction', 'morse', 'slider']);
+const MOTIF_STACK = new Set<ModuleType>(['tetris', 'breakout', 'donkeykong', 'jigsaw']);
+const MOTIF_BURST = new Set<ModuleType>(['spaceinvaders', 'asteroids', 'galaga']);
+const MOTIF_GRID = new Set<ModuleType>(['maze', 'snake', 'pacman', 'frogger', 'digdug', 'qbert', 'centipede', 'sudoku', 'wordsearch', 'spotdiff', 'memorymatch']);
+
+/** Mechanic family a game's animated thumbnail should depict. Anything not
+ *  in an explicit set (wires, patterns, ciphers, sequences…) reads as a
+ *  routed "path". */
+export function getGameMotif(type: ModuleType | string): GameMotif {
+  const t = type as ModuleType;
+  if (MOTIF_DIAL.has(t)) return 'dial';
+  if (MOTIF_STACK.has(t)) return 'stack';
+  if (MOTIF_BURST.has(t)) return 'burst';
+  if (MOTIF_GRID.has(t)) return 'grid';
+  return 'path';
+}
+
 export function getCatalogMeta(type: ModuleType): CatalogMeta {
   const skills: SkillTag[] = [];
   if (REFLEX.has(type)) skills.push('Reflex');

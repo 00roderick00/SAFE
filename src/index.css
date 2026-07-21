@@ -1171,6 +1171,108 @@ input:focus-visible,
   opacity: 0.45;
 }
 
+/* Animated game thumbnails (Section 6) --------------------------------- */
+.game-thumb {
+  position: relative;
+  width: var(--thumb-size, 54px);
+  height: var(--thumb-size, 54px);
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--safe-secure);
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: radial-gradient(circle at 50% 42%, rgba(216, 255, 69, 0.08), transparent 68%);
+  overflow: hidden;
+}
+.game-thumb__svg { width: 82%; height: 82%; }
+.game-thumb .thumb-stroke { fill: none; stroke: currentColor; stroke-width: 1.6; opacity: 0.5; }
+.game-thumb .thumb-dot { fill: currentColor; opacity: 0.32; }
+.game-thumb .thumb-fill { fill: currentColor; }
+.game-thumb .thumb-accent-fill { fill: currentColor; }
+.game-thumb .thumb-accent { stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+.game-thumb rect.thumb-accent { fill: currentColor; stroke: none; }
+
+/* Static resting frame per motif (each already reads as its mechanic);
+   transform-origins are set so the engaged animation pivots correctly. */
+.thumb-needle { transform-box: view-box; transform-origin: 24px 24px; }
+.thumb-arc { opacity: 0.55; }
+.thumb-trace { stroke-dasharray: 62; stroke-dashoffset: 0; }
+.thumb-node { opacity: 0.6; }
+.thumb-shot { opacity: 0; }
+.thumb-target { transform-box: fill-box; transform-origin: center; opacity: 0.6; }
+
+/* Assign the animation ONLY while the card is engaged — hover, keyboard
+   focus, or selected. At rest no animation runs, so a full catalog is free. */
+.rich-game-card:hover .thumb-needle,
+.rich-game-card:focus-within .thumb-needle,
+.rich-game-card.selected .thumb-needle,
+.game-thumb--always .thumb-needle { animation: thumb-needle 2.6s ease-in-out infinite; }
+.rich-game-card:hover .thumb-arc,
+.rich-game-card:focus-within .thumb-arc,
+.rich-game-card.selected .thumb-arc,
+.game-thumb--always .thumb-arc { animation: thumb-arc-pulse 2.6s ease-in-out infinite; }
+.rich-game-card:hover .thumb-runner,
+.rich-game-card:focus-within .thumb-runner,
+.rich-game-card.selected .thumb-runner,
+.game-thumb--always .thumb-runner { animation: thumb-runner 3.4s ease-in-out infinite; }
+.rich-game-card:hover .thumb-block,
+.rich-game-card:focus-within .thumb-block,
+.rich-game-card.selected .thumb-block,
+.game-thumb--always .thumb-block { animation: thumb-drop 2.4s ease-in-out infinite; }
+.rich-game-card:hover .thumb-block--2,
+.rich-game-card:focus-within .thumb-block--2,
+.rich-game-card.selected .thumb-block--2,
+.game-thumb--always .thumb-block--2 { animation-delay: 0.28s; }
+.rich-game-card:hover .thumb-block--3,
+.rich-game-card:focus-within .thumb-block--3,
+.rich-game-card.selected .thumb-block--3,
+.game-thumb--always .thumb-block--3 { animation-delay: 0.56s; }
+.rich-game-card:hover .thumb-trace,
+.rich-game-card:focus-within .thumb-trace,
+.rich-game-card.selected .thumb-trace,
+.game-thumb--always .thumb-trace { animation: thumb-trace 2.8s ease-in-out infinite; }
+.rich-game-card:hover .thumb-node,
+.rich-game-card:focus-within .thumb-node,
+.rich-game-card.selected .thumb-node,
+.game-thumb--always .thumb-node { animation: thumb-node 2.8s ease-in-out infinite; }
+.rich-game-card:hover .thumb-shot,
+.rich-game-card:focus-within .thumb-shot,
+.rich-game-card.selected .thumb-shot,
+.game-thumb--always .thumb-shot { animation: thumb-shot 1.5s ease-out infinite; }
+.rich-game-card:hover .thumb-target,
+.rich-game-card:focus-within .thumb-target,
+.rich-game-card.selected .thumb-target,
+.game-thumb--always .thumb-target { animation: thumb-pulse 1.5s ease-in-out infinite; }
+
+@keyframes thumb-needle { 0%, 100% { transform: rotate(-34deg); } 50% { transform: rotate(34deg); } }
+@keyframes thumb-arc-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.85; } }
+@keyframes thumb-runner {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(28px, 0); }
+  50% { transform: translate(28px, 28px); }
+  75% { transform: translate(0, 28px); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes thumb-drop {
+  0% { transform: translateY(-18px); opacity: 0; }
+  30% { opacity: 1; }
+  60%, 100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes thumb-trace { 0% { stroke-dashoffset: 62; } 55%, 100% { stroke-dashoffset: 0; } }
+@keyframes thumb-node { 0%, 45% { opacity: 0.3; } 70%, 100% { opacity: 1; } }
+@keyframes thumb-shot {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: 1; }
+  68% { transform: translateY(-24px); opacity: 1; }
+  70%, 100% { transform: translateY(-24px); opacity: 0; }
+}
+@keyframes thumb-pulse { 0%, 100% { opacity: 0.35; transform: scale(0.82); } 50% { opacity: 0.95; transform: scale(1.12); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .game-thumb * { animation: none !important; }
+}
+
 .state-badge {
   --state-color: var(--safe-secure);
   display: inline-flex;

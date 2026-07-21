@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { GameEmblem, StateBadge } from '../components/game';
+import { GameEmblem, GameThumbnail, StateBadge } from '../components/game';
 import { MiniGameHost } from '../components/minigames';
 import { getCatalogMeta, getGameStatus } from '../game/catalog';
 import { ALL_MODULE_TYPES, MODULE_CONFIG } from '../game/constants';
@@ -207,7 +207,7 @@ export const GamePickerScreen = () => {
             return (
               <motion.article key={game.id} className={`rich-game-card ${selected ? 'selected' : ''}`} layout>
                 <button className="rich-game-card__select" onClick={() => selectCustom(game)} aria-label={`Select ${sanitizeUserText(game.name, { maxLength: 60 })}`}>
-                  <GameEmblem type={game.base_engine} /><div className="rich-game-card__copy"><span className="eyebrow">COMMUNITY</span><h3>{sanitizeUserText(game.name, { maxLength: 60 })}</h3><p>{sanitizeUserText(game.description, { maxLength: 110 })}</p></div>
+                  <GameThumbnail type={game.base_engine} /><div className="rich-game-card__copy"><span className="eyebrow">COMMUNITY</span><h3>{sanitizeUserText(game.name, { maxLength: 60 })}</h3><p>{sanitizeUserText(game.description, { maxLength: 110 })}</p></div>
                 </button>
                 <button className="favorite-button" onClick={() => toggleFavorite(game.id)} aria-label={favorite ? `Remove ${game.name} from favorites` : `Add ${game.name} to favorites`} aria-pressed={favorite}><Heart size={18} fill={favorite ? 'currentColor' : 'none'} /></button>
                 <div className="game-card-meta"><span>{meta.skills.join(' · ')}</span><span>~{meta.duration}s</span><span>{meta.control}</span><span>{game.calibration_stats?.solveRate === undefined ? 'Solve rate unavailable' : `${Math.round(game.calibration_stats.solveRate * 100)}% solve rate`}</span></div>
@@ -225,7 +225,7 @@ export const GamePickerScreen = () => {
             return (
               <motion.article key={type} className={`rich-game-card ${selected ? 'selected' : ''}`} layout>
                 <button className="rich-game-card__select" onClick={() => selectBuiltIn(type)} aria-label={`Select ${config.name}`}>
-                  <GameEmblem type={type} /><div className="rich-game-card__copy"><span className="eyebrow">{config.category}</span><h3>{config.name}</h3><p>{config.description}</p></div>
+                  <GameThumbnail type={type} /><div className="rich-game-card__copy"><span className="eyebrow">{config.category}</span><h3>{config.name}</h3><p>{config.description}</p></div>
                 </button>
                 <button className="favorite-button" onClick={() => toggleFavorite(type)} aria-label={favorite ? `Remove ${config.name} from favorites` : `Add ${config.name} to favorites`} aria-pressed={favorite}><Heart size={18} fill={favorite ? 'currentColor' : 'none'} /></button>
                 <div className="game-card-meta"><span>{meta.skills.join(' · ')}</span><span>~{meta.duration}s</span><span>{meta.control}</span><span>{getGameStatus(type).label}</span></div>
