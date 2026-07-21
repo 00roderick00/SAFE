@@ -1,18 +1,24 @@
-// Marketplace — browse live community custom games and equip them
-// onto a security-loadout slot. Every game shown here has passed
-// the calibration gate (status='live'), so equipping one can't
-// produce an unwinnable safe.
+// Marketplace — browse live community-made locks and equip one onto a
+// security-loadout slot. Every lock shown here has passed the calibration
+// fairness gate (status='live'), so equipping it can't produce an
+// unbeatable safe. Presented in the shared tactical visual system.
 
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Sparkles, CheckCircle, Gamepad2, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Clock3, Gamepad2, Loader2, Play, ShieldCheck, Sparkles, Store } from 'lucide-react';
+import { GameEmblem, StateBadge, StateFrame } from '../components/game';
 import { api, type PublicCustomGame } from '../services/api';
 import { usePlayerStore } from '../store/playerStore';
 import { supabase } from '../services/supabaseClient';
 import { buildCustomModule } from '../game/loadout';
+import { getCatalogMeta } from '../game/catalog';
 import { filterDisplayableListings } from '../game/listingSafety';
 import { sanitizeUserText } from '../utils/sanitize';
+import type { ModuleType } from '../types';
+
+const difficultyLabel = (value: number | null) =>
+  value === null ? 'Uncalibrated' : value < .33 ? 'Easy' : value < .66 ? 'Tactical' : 'Punishing';
 
 export const MarketplaceScreen = () => {
   const navigate = useNavigate();
@@ -45,15 +51,9 @@ export const MarketplaceScreen = () => {
     };
   }, []);
 
-  // Reliable, idempotent equip. The old version had three first-click
-  // failure modes: (1) it read a possibly-stale `securityLoadout`
-  // captured at render, (2) it used `getUser()` — a network call that
-  // can transiently return no user right after load, silently skipping
-  // the server write, and (3) it updated the client store BEFORE the
-  // server write, so a late server-hydrate could clobber it. This
-  // version reads fresh state, resolves the session from the cached
-  // `getSession()`, writes to the server FIRST, and only then updates
-  // the local store — so a single click always persists.
+  // Reliable, idempotent equip. Reads fresh state, resolves the session
+  // from the cached getSession(), writes to the server FIRST, and only
+  // then updates the local store — so a single click always persists.
   const equip = async (g: PublicCustomGame, slotIndex: number) => {
     const key = `${g.id}:${slotIndex}`;
     if (savingKey) return; // ignore double-clicks while a write is in flight
@@ -91,114 +91,99 @@ export const MarketplaceScreen = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-4">
-        <div className="flex items-center">
-          <button onClick={() => navigate('/custom-games')} className="p-2 -ml-2 text-text-dim hover:text-text" aria-label="Back to custom games">
-            <ArrowLeft size={24} />
-          </button>
-          <h1 className="ml-2 text-lg font-semibold">Marketplace</h1>
-        </div>
+    <div className="marketplace">
+      <header className="picker-header">
+        <button className="icon-button" onClick={() => navigate('/custom-games')} aria-label="Back to custom games">
+          <ArrowLeft size={20} />
+        </button>
+        <div><p className="eyebrow">MARKETPLACE</p><h1>Community locks</h1></div>
+        <StateBadge state="secure" label="Live" compact />
       </header>
 
-      <div className="px-4 py-6">
-        <div className="card-clean p-4 mb-6">
-          <p className="text-sm text-text-dim">
-            Every listing has passed the calibration gate — its solve rate
-            landed in the target band. Equipping one on a safe slot pays
-            the creator a royalty on every attack that hits it.
-          </p>
-        </div>
-
-        {loading && <p className="text-text-dim">Loading…</p>}
-        {err && <p className="text-danger">{err}</p>}
-        {equipErr && (
-          <p className="text-danger text-sm mb-4" role="alert">
-            {equipErr}
-          </p>
-        )}
-
-        {!loading && games.length === 0 && (
-          <div className="text-center py-12">
-            <Gamepad2 size={48} className="mx-auto mb-4 text-primary" aria-hidden="true" />
-            <p className="text-text-dim">No live community games yet.</p>
+      <main className="marketplace-body">
+        <StateFrame state="secure" className="marketplace-intro" label="How the marketplace works">
+          <Store size={20} aria-hidden="true" />
+          <div>
+            <strong>Player-made locks, fairness-checked.</strong>
+            <span>
+              Every lock here passed a solve-rate check, so equipping one can’t
+              make your safe unbeatable. Its creator earns a small royalty each
+              time an attacker takes it on.
+            </span>
           </div>
+        </StateFrame>
+
+        {equipErr && <p className="marketplace-alert" role="alert">{equipErr}</p>}
+        {err && <p className="marketplace-alert" role="alert">{err}</p>}
+
+        {loading && (
+          <div className="honest-empty"><Loader2 size={24} className="animate-spin" aria-hidden="true" /><div><strong>Loading community locks…</strong><span>Fetching the latest calibrated listings.</span></div></div>
         )}
 
-        <div className="space-y-4">
-          {games.map((g) => (
-            <motion.div
-              key={g.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="card-clean p-4"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold">{sanitizeUserText(g.name, { maxLength: 60 })}</h3>
-                  <p className="text-xs text-text-dim">
-                    by {sanitizeUserText(g.creator_handle ?? 'anon', { maxLength: 40 })} · base: {g.base_engine}
-                  </p>
+        {!loading && !err && games.length === 0 && (
+          <div className="honest-empty"><Gamepad2 size={24} aria-hidden="true" /><div><strong>No community locks yet</strong><span>Build one in the AI Workshop — once it passes calibration it appears here.</span></div></div>
+        )}
+
+        <section className="rich-game-grid marketplace-grid" aria-label="Community locks">
+          {games.map((g) => {
+            const meta = getCatalogMeta(g.base_engine as ModuleType);
+            const name = sanitizeUserText(g.name, { maxLength: 60 });
+            const equippedSlot = securityLoadout.modules.findIndex((m) => m?.customGameId === g.id);
+            return (
+              <motion.article
+                key={g.id}
+                className={`rich-game-card marketplace-card${equippedSlot >= 0 ? ' selected' : ''}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                layout
+              >
+                <div className="marketplace-card__head">
+                  <GameEmblem type={g.base_engine} />
+                  <div className="rich-game-card__copy">
+                    <span className="eyebrow">COMMUNITY · {g.base_engine}</span>
+                    <h3>{name}</h3>
+                    <p>by {sanitizeUserText(g.creator_handle ?? 'anon', { maxLength: 40 })}</p>
+                  </div>
+                  <StateBadge state="secure" label="Live" compact />
                 </div>
-                <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/20 text-primary">
-                  <CheckCircle size={12} />
-                  live
-                </span>
-              </div>
-              {g.description && (
-                <p className="text-sm text-text-dim mt-2 line-clamp-2">
-                  {sanitizeUserText(g.description, { maxLength: 200 })}
-                </p>
-              )}
-              <div className="bg-surface-light rounded-lg p-3 mt-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-text-dim">Difficulty</span>
-                  <span>
-                    {g.calibrated_difficulty !== null
-                      ? `${(g.calibrated_difficulty * 100).toFixed(0)}%`
-                      : '—'}
-                  </span>
+
+                {g.description && (
+                  <p className="marketplace-card__desc">{sanitizeUserText(g.description, { maxLength: 160 })}</p>
+                )}
+
+                <div className="game-card-meta">
+                  <span><ShieldCheck size={11} /> {difficultyLabel(g.calibrated_difficulty)}</span>
+                  <span><Play size={11} /> {g.plays} plays</span>
+                  <span><Clock3 size={11} /> ~{meta.duration}s</span>
+                  <span>{meta.skills.join(' · ') || 'Mixed'}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-text-dim">Plays</span>
-                  <span>{g.plays}</span>
+
+                <div className="marketplace-equip">
+                  <span className="marketplace-equip__label">Equip to a lock slot</span>
+                  <div className="marketplace-equip__slots">
+                    {[0, 1, 2].map((i) => {
+                      const isSaving = savingKey === `${g.id}:${i}`;
+                      const isEquipped = securityLoadout.modules[i]?.customGameId === g.id;
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => equip(g, i)}
+                          disabled={savingKey !== null}
+                          aria-label={`Equip ${name} to lock slot ${i + 1}`}
+                          className={`marketplace-slot${isEquipped ? ' marketplace-slot--equipped' : ''}`}
+                        >
+                          {isSaving ? <Loader2 size={13} className="animate-spin" /> : isEquipped ? <CheckCircle size={13} /> : <Sparkles size={13} />}
+                          {isEquipped ? `Slot ${i + 1} ✓` : `Slot ${i + 1}`}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-3">
-                {[0, 1, 2].map((i) => {
-                  const key = `${g.id}:${i}`;
-                  const isSaving = savingKey === key;
-                  // Reflect the *persisted* store: is this game already
-                  // in this slot?
-                  const isEquipped = securityLoadout.modules[i]?.customGameId === g.id;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => equip(g, i)}
-                      disabled={savingKey !== null}
-                      aria-label={`Equip ${sanitizeUserText(g.name, { maxLength: 60 })} to slot ${i + 1}`}
-                      className={`text-xs py-2 rounded-lg border inline-flex items-center justify-center gap-1 disabled:opacity-60 ${
-                        isEquipped
-                          ? 'bg-primary/20 border-primary text-primary'
-                          : 'bg-surface-light border-border hover:bg-primary/10 hover:border-primary'
-                      }`}
-                    >
-                      {isSaving ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : isEquipped ? (
-                        <CheckCircle size={12} />
-                      ) : (
-                        <Sparkles size={12} />
-                      )}
-                      {isEquipped ? `Slot ${i + 1} ✓` : `Slot ${i + 1}`}
-                    </button>
-                  );
-                })}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
+              </motion.article>
+            );
+          })}
+        </section>
+      </main>
     </div>
   );
 };

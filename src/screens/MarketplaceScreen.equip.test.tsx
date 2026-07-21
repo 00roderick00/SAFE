@@ -74,7 +74,7 @@ describe('MarketplaceScreen equip', () => {
 
   it('persists to the server on the FIRST slot click', async () => {
     renderScreen();
-    const slot1 = await screen.findByLabelText('Equip Chase Maze to slot 1');
+    const slot1 = await screen.findByLabelText('Equip Chase Maze to lock slot 1');
 
     fireEvent.click(slot1);
 
@@ -95,7 +95,7 @@ describe('MarketplaceScreen equip', () => {
   it('surfaces an error and does not navigate when the session is missing', async () => {
     getSession.mockResolvedValue({ data: { session: null } });
     renderScreen();
-    const slot1 = await screen.findByLabelText('Equip Chase Maze to slot 1');
+    const slot1 = await screen.findByLabelText('Equip Chase Maze to lock slot 1');
 
     fireEvent.click(slot1);
 
