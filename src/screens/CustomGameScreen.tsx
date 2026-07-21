@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Plus, Sparkles, Loader2, Store, Gauge, Gamepad2, Lightbulb } from 'lucide-react';
 import { api, type CustomGame, type GenerateGameResponse } from '../services/api';
-import { StateBadge, type VisualState } from '../components/game';
+import { GameEmblem, StateBadge, StateFrame, type VisualState } from '../components/game';
 import { useSession } from '../services/useSession';
 import { getCustomGameDisplay } from '../game/customGameDisplay';
 import { sanitizeUserText } from '../utils/sanitize';
@@ -49,6 +49,20 @@ const SUPPORTED_ENGINES: { id: string; label: string; blurb: string }[] = [
   { id: 'quickmath', label: 'Quick math', blurb: 'Solve arithmetic under pressure' },
 ];
 
+// Quick-start recipes: one tap fills the form with a coherent, in-band
+// starting point the creator can then tweak (Section 10 — templates).
+type Template = {
+  id: string; name: string; prompt: string;
+  engine: string; mode: 'engine_config' | 'dsl_program'; difficulty: number;
+};
+const TEMPLATES: Template[] = [
+  { id: 'speedrun', name: 'Speedrun Maze', engine: 'maze', mode: 'engine_config', difficulty: 0.6, prompt: 'A tight 10x10 maze with a 20-second timer and a single winding path to the exit.' },
+  { id: 'memory', name: 'Memory Vault', engine: 'memorymatch', mode: 'engine_config', difficulty: 0.45, prompt: 'Match six hidden pairs before a 30-second timer runs out.' },
+  { id: 'reflex', name: 'Reflex Dial', engine: 'timing', mode: 'engine_config', difficulty: 0.55, prompt: 'Stop a fast-moving needle inside a narrow target zone across three rounds.' },
+  { id: 'crunch', name: 'Number Crunch', engine: 'quickmath', mode: 'engine_config', difficulty: 0.5, prompt: 'Solve eight arithmetic problems under a tightening per-question timer.' },
+  { id: 'chase', name: 'Chase Grid', engine: 'maze', mode: 'dsl_program', difficulty: 0.6, prompt: 'A 9x9 grid where I reach the exit while two enemies patrol the corridors.' },
+];
+
 export const CustomGameScreen = () => {
   const navigate = useNavigate();
   const session = useSession();
@@ -81,6 +95,17 @@ export const CustomGameScreen = () => {
       cancelled = true;
     };
   }, [session]);
+
+  const applyTemplate = (t: Template) => {
+    setErr(null);
+    setPreview(null);
+    setName(t.name);
+    setPrompt(t.prompt);
+    setEngine(t.engine);
+    setMode(t.mode);
+    setStatedDifficulty(t.difficulty);
+    setShowForm(true);
+  };
 
   const baseArgs = () => ({
     prompt: prompt.trim(),
@@ -161,13 +186,32 @@ export const CustomGameScreen = () => {
       </header>
 
       <main className="workshop-main">
-        <div className="card-clean p-4 mb-6">
-          <p className="text-sm text-text-dim">
-            Describe the defense you want and pick a base mechanism. We build it,
-            then run a fairness check — a game only goes live if it's beatable but
-            not too easy, so it's fair for both you and attackers.
-          </p>
-        </div>
+        <StateFrame state="secure" className="workshop-intro" label="How the workshop works">
+          <Sparkles size={20} aria-hidden="true" />
+          <div>
+            <strong>Describe a lock — we build and fairness-check it.</strong>
+            <span>
+              Pick a base mechanism and describe the defense you want. A game
+              only goes live if it’s beatable but not too easy, so it’s fair for
+              you and for attackers.
+            </span>
+          </div>
+        </StateFrame>
+
+        {!showForm && (
+          <section className="workshop-templates" aria-label="Quick-start templates">
+            <p className="eyebrow">START FROM A TEMPLATE</p>
+            <div className="workshop-templates__row">
+              {TEMPLATES.map((t) => (
+                <button key={t.id} type="button" className="template-card" onClick={() => applyTemplate(t)}>
+                  <GameEmblem type={t.engine} />
+                  <span className="template-card__name">{t.name}</span>
+                  <span className="template-card__mode">{t.mode === 'dsl_program' ? 'Designed' : t.engine}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         <AnimatePresence>
           {showForm && (
@@ -175,90 +219,81 @@ export const CustomGameScreen = () => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="mb-6 overflow-hidden"
+              className="workshop-form-wrap"
             >
-              <form onSubmit={handleSubmit} className="card-clean p-4 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Name</label>
+              <form onSubmit={handleSubmit} className="workshop-form">
+                <label className="workshop-field">
+                  <span className="workshop-field__label">Name</span>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g., Speedrun Maze"
-                    className="w-full px-3 py-2 bg-surface-light border border-border rounded-lg text-text placeholder:text-text-dim focus:outline-none focus:border-primary"
                     maxLength={60}
                     required
                     disabled={busy}
                   />
-                </div>
+                </label>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">Mode</label>
-                  <div className="grid grid-cols-2 gap-2">
+                <fieldset className="workshop-field" disabled={busy}>
+                  <span className="workshop-field__label">Mode</span>
+                  <div className="select-grid">
                     <button
                       type="button"
                       onClick={() => setMode('engine_config')}
-                      disabled={busy}
-                      className={`text-left p-2 rounded-lg border ${
-                        mode === 'engine_config' ? 'bg-primary/20 border-primary' : 'bg-surface-light border-border'
-                      }`}
+                      className={`select-card${mode === 'engine_config' ? ' select-card--active' : ''}`}
+                      aria-pressed={mode === 'engine_config'}
                     >
-                      <div className="text-sm font-medium">Tune an engine</div>
-                      <div className="text-xs text-text-dim">Pick one of our 6 engines and let AI configure it.</div>
+                      <strong>Tune an engine</strong>
+                      <span>Pick one of our 6 engines and let AI configure it.</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setMode('dsl_program')}
-                      disabled={busy}
-                      className={`text-left p-2 rounded-lg border ${
-                        mode === 'dsl_program' ? 'bg-primary/20 border-primary' : 'bg-surface-light border-border'
-                      }`}
+                      className={`select-card${mode === 'dsl_program' ? ' select-card--active' : ''}`}
+                      aria-pressed={mode === 'dsl_program'}
                     >
-                      <div className="text-sm font-medium">Design a game</div>
-                      <div className="text-xs text-text-dim">AI composes a grid game (walls, tokens, enemies).</div>
+                      <strong>Design a game</strong>
+                      <span>AI composes a grid game (walls, tokens, enemies).</span>
                     </button>
                   </div>
-                </div>
+                </fieldset>
 
                 {mode === 'engine_config' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Base engine</label>
-                    <div className="grid grid-cols-2 gap-2">
+                  <fieldset className="workshop-field" disabled={busy}>
+                    <span className="workshop-field__label">Base engine</span>
+                    <div className="select-grid">
                       {SUPPORTED_ENGINES.map((e) => (
                         <button
                           key={e.id}
                           type="button"
                           onClick={() => setEngine(e.id)}
-                          disabled={busy}
-                          className={`text-left p-2 rounded-lg border ${
-                            engine === e.id ? 'bg-primary/20 border-primary' : 'bg-surface-light border-border'
-                          }`}
+                          className={`select-card select-card--compact${engine === e.id ? ' select-card--active' : ''}`}
+                          aria-pressed={engine === e.id}
                         >
-                          <div className="text-sm font-medium">{e.label}</div>
-                          <div className="text-xs text-text-dim">{e.blurb}</div>
+                          <GameEmblem type={e.id} />
+                          <strong>{e.label}</strong>
+                          <span>{e.blurb}</span>
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </fieldset>
                 )}
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">Prompt</label>
+                <label className="workshop-field">
+                  <span className="workshop-field__label">Prompt</span>
                   <textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder="A punishing 12x12 maze with a 20-second timer, neon theme."
-                    className="w-full px-3 py-2 bg-surface-light border border-border rounded-lg text-text placeholder:text-text-dim focus:outline-none focus:border-primary min-h-[100px] resize-none"
                     maxLength={1000}
                     required
                     disabled={busy}
                   />
-                </div>
+                </label>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Target difficulty: {(statedDifficulty * 100).toFixed(0)}%
-                  </label>
+                <label className="difficulty-control workshop-field">
+                  <span><b>Target difficulty</b><output>{(statedDifficulty * 100).toFixed(0)}%</output></span>
                   <input
                     type="range"
                     min={0}
@@ -266,51 +301,26 @@ export const CustomGameScreen = () => {
                     step={0.05}
                     value={statedDifficulty}
                     onChange={(e) => setStatedDifficulty(parseFloat(e.target.value))}
-                    className="w-full"
                     disabled={busy}
                   />
-                </div>
+                </label>
 
-                {err && <p className="text-sm text-danger">{err}</p>}
+                {err && <p className="workshop-alert" role="alert">{err}</p>}
 
                 {preview && <PreviewBox preview={preview} band={BAND} />}
 
-                <div className="flex gap-3">
+                <div className="workshop-actions">
                   <button
                     type="button"
                     onClick={handlePreview}
-                    className="flex-1 py-2 bg-surface border border-border rounded-lg hover:bg-surface-light disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                    className="btn-secondary"
                     disabled={busy || previewing}
                     title="Estimate the solve rate without publishing"
                   >
-                    {previewing ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        Checking…
-                      </>
-                    ) : (
-                      <>
-                        <Gauge size={16} />
-                        Preview difficulty
-                      </>
-                    )}
+                    {previewing ? <><Loader2 size={16} className="animate-spin" /> Checking…</> : <><Gauge size={16} /> Preview difficulty</>}
                   </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2 bg-primary text-background font-medium rounded-lg hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
-                    disabled={busy || previewing}
-                  >
-                    {busy ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        Building…
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={16} />
-                        Build with AI
-                      </>
-                    )}
+                  <button type="submit" className="btn-neon" disabled={busy || previewing}>
+                    {busy ? <><Loader2 size={16} className="animate-spin" /> Building…</> : <><Sparkles size={16} /> Build with AI</>}
                   </button>
                 </div>
               </form>
@@ -319,17 +329,20 @@ export const CustomGameScreen = () => {
         </AnimatePresence>
 
         {games.length === 0 ? (
-          <div className="text-center py-12">
-            <Gamepad2 size={48} className="mx-auto mb-4 text-primary" aria-hidden="true" />
-            <p className="text-text-dim">Nothing yet.</p>
-            <p className="text-text-dim text-sm mt-1">Tap Build to make your first AI-designed game.</p>
+          <div className="honest-empty workshop-empty">
+            <Gamepad2 size={24} aria-hidden="true" />
+            <div>
+              <strong>No games yet</strong>
+              <span>Pick a template above, or tap Build to design one from scratch.</span>
+            </div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <section className="workshop-list" aria-label="Your custom games">
+            <p className="eyebrow">YOUR GAMES</p>
             {games.map((g) => (
               <CustomGameRow key={g.id} game={g} />
             ))}
-          </div>
+          </section>
         )}
       </main>
     </div>
@@ -340,63 +353,44 @@ const CustomGameRow = ({ game }: { game: CustomGame }) => {
   const rate = game.calibration_stats?.solveRate;
   const display = getCustomGameDisplay(game);
   return (
-    <motion.div
+    <motion.article
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="card-clean p-4"
+      className="rich-game-card workshop-game"
+      layout
     >
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-semibold">{sanitizeUserText(game.name, { maxLength: 60 })}</h3>
-          <p className="text-xs text-text-dim">
-            Base engine: {game.base_engine}
-          </p>
+      <div className="marketplace-card__head">
+        <GameEmblem type={game.base_engine} />
+        <div className="rich-game-card__copy">
+          <span className="eyebrow">YOUR GAME · {game.base_engine}</span>
+          <h3>{sanitizeUserText(game.name, { maxLength: 60 })}</h3>
         </div>
         <StatusPill status={game.status} />
       </div>
       {display.contentRejected ? (
         // Moderation/quality reject: never surface the raw prompt.
-        <p className="text-sm text-text-dim mt-2 italic">
+        <p className="workshop-game__desc workshop-game__desc--muted">
           Original prompt hidden — this submission was blocked in review.
         </p>
       ) : (
         game.description && (
-          <p className="text-sm text-text-dim mt-2 line-clamp-2">
-            {sanitizeUserText(game.description, { maxLength: 200 })}
-          </p>
+          <p className="workshop-game__desc">{sanitizeUserText(game.description, { maxLength: 160 })}</p>
         )
       )}
       {game.calibration_stats && (
-        <div className="bg-surface-light rounded-lg p-3 mt-3 text-sm space-y-1">
-          <div className="flex justify-between">
-            <span className="text-text-dim">Solve rate</span>
-            <span>{rate !== undefined ? `${(rate * 100).toFixed(0)}%` : '—'}</span>
+        <>
+          <div className="game-card-meta">
+            <span>Solve {rate !== undefined ? `${(rate * 100).toFixed(0)}%` : '—'}</span>
+            <span>Diff {game.calibrated_difficulty !== null ? `${(game.calibrated_difficulty * 100).toFixed(0)}%` : '—'}</span>
+            <span>{game.plays} plays</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-text-dim">Calibrated difficulty</span>
-            <span>
-              {game.calibrated_difficulty !== null
-                ? `${(game.calibrated_difficulty * 100).toFixed(0)}%`
-                : '—'}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-text-dim">Plays</span>
-            <span>{game.plays}</span>
-          </div>
-          {display.rejectionNote && (
-            <p className="text-xs text-warning pt-2 border-t border-border">
-              {display.rejectionNote}
-            </p>
-          )}
+          {display.rejectionNote && <p className="workshop-note workshop-note--warn">{display.rejectionNote}</p>}
           {game.calibration_stats.suggestion && (
-            <p className="text-xs text-text pt-2 flex items-start gap-2">
-              <Lightbulb size={14} className="text-warning shrink-0" aria-hidden="true" /> {game.calibration_stats.suggestion}
-            </p>
+            <p className="workshop-note"><Lightbulb size={14} aria-hidden="true" /> {game.calibration_stats.suggestion}</p>
           )}
-        </div>
+        </>
       )}
-    </motion.div>
+    </motion.article>
   );
 };
 
@@ -405,29 +399,24 @@ const CustomGameRow = ({ game }: { game: CustomGame }) => {
 const PreviewBox = ({ preview, band }: { preview: PreviewState; band: { min: number; max: number } }) => {
   const pct = (n: number) => `${Math.round(n * 100)}%`;
   const inBand = preview.passes;
+  const state: VisualState = preview.blocked ? 'failed' : inBand ? 'secure' : 'warning';
   return (
-    <div
-      className={`rounded-lg p-3 text-sm border ${
-        inBand ? 'bg-primary/10 border-primary/40' : 'bg-surface-light border-warning/40'
-      }`}
-    >
+    <StateFrame state={state} className="workshop-preview" label="Difficulty preview">
       {preview.blocked ? (
-        <p className="text-warning">
+        <p className="workshop-preview__verdict">
           Blocked before calibration — {preview.reason ?? 'rejected'}. Edit the title/prompt and try again.
         </p>
       ) : (
         <>
-          <div className="flex items-center justify-between">
-            <span className="text-text-dim">Estimated solve rate</span>
-            <span className={inBand ? 'text-primary font-medium' : 'text-warning font-medium'}>
-              {preview.solveRate !== undefined ? pct(preview.solveRate) : '—'}
-            </span>
+          <div className="workshop-preview__row">
+            <span>Estimated solve rate</span>
+            <strong>{preview.solveRate !== undefined ? pct(preview.solveRate) : '—'}</strong>
           </div>
-          <div className="flex items-center justify-between text-xs text-text-dim mt-1">
+          <div className="workshop-preview__row workshop-preview__row--dim">
             <span>Live band</span>
             <span>{pct(band.min)}–{pct(band.max)}</span>
           </div>
-          <p className={`text-xs mt-2 ${inBand ? 'text-primary' : 'text-warning'}`}>
+          <p className="workshop-preview__verdict">
             {inBand
               ? '✓ In the band — this will publish as live.'
               : preview.reason === 'too_hard'
@@ -435,11 +424,11 @@ const PreviewBox = ({ preview, band }: { preview: PreviewState; band: { min: num
                 : 'Too easy for the live band.'}
           </p>
           {!inBand && preview.suggestion && (
-            <p className="text-xs text-text mt-1 flex items-start gap-2"><Lightbulb size={14} className="text-warning shrink-0" aria-hidden="true" /> {preview.suggestion}</p>
+            <p className="workshop-note"><Lightbulb size={14} aria-hidden="true" /> {preview.suggestion}</p>
           )}
         </>
       )}
-    </div>
+    </StateFrame>
   );
 };
 

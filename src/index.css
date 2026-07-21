@@ -2007,7 +2007,68 @@ input:focus-visible,
 .workshop-header > div { flex: 1; min-width: 0; padding-left: 12px; }
 .workshop-header__actions { flex: none; display: flex; align-items: center; gap: 8px; }
 .workshop-build { min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px; border-radius: 3px; font-size: 13px; }
-.workshop-main { display: flex; flex-direction: column; padding-top: 6px; }
+.workshop-main { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; }
+.workshop-intro { display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: start; padding: 12px; }
+.workshop-intro > svg { margin-top: 1px; color: var(--state-color); }
+.workshop-intro strong { display: block; font-size: 13px; }
+.workshop-intro span { display: block; margin-top: 3px; color: var(--color-text-dim); font-size: 11px; line-height: 1.45; }
+
+/* Quick-start templates */
+.workshop-templates { display: flex; flex-direction: column; gap: 8px; }
+.workshop-templates__row { display: grid; grid-auto-flow: column; grid-auto-columns: 120px; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.template-card { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 10px; border: 1px solid var(--color-border); background: var(--safe-metal-1); text-align: left; transition: border-color .15s, background .15s; }
+.template-card:hover { border-color: var(--safe-secure); background: rgba(216,255,69,.06); }
+.template-card .game-emblem { width: 34px; height: 34px; color: var(--safe-secure); }
+.template-card__name { font-family: var(--font-display); font-size: 12px; font-weight: 900; text-transform: uppercase; line-height: 1.1; }
+.template-card__mode { color: var(--color-text-dim); font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+
+/* Workshop form */
+.workshop-form-wrap { overflow: hidden; }
+.workshop-form { display: flex; flex-direction: column; gap: 13px; padding: 14px; border: 1px solid var(--color-border); background: var(--safe-metal-1); }
+.workshop-field { display: flex; flex-direction: column; gap: 6px; margin: 0; border: 0; padding: 0; }
+.workshop-field__label { color: var(--color-text-secondary); font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.workshop-field input[type=text], .workshop-field textarea { width: 100%; padding: 10px 12px; color: var(--color-text); border: 1px solid var(--color-border); background: var(--safe-metal-2, rgba(255,255,255,.02)); font-size: 14px; outline: 0; transition: border-color .15s; }
+.workshop-field input[type=text]:focus, .workshop-field textarea:focus { border-color: var(--safe-secure); }
+.workshop-field textarea { min-height: 96px; resize: vertical; line-height: 1.45; }
+.workshop-field input::placeholder, .workshop-field textarea::placeholder { color: var(--color-text-dim); }
+.workshop-form .difficulty-control > span { font-size: 10px; }
+.select-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.select-card { display: flex; flex-direction: column; gap: 3px; padding: 10px; color: var(--color-text); border: 1px solid var(--color-border); background: var(--safe-metal-2, rgba(255,255,255,.02)); text-align: left; transition: border-color .15s, background .15s; }
+.select-card strong { font-size: 12px; font-weight: 800; }
+.select-card span { color: var(--color-text-dim); font-size: 10px; line-height: 1.35; }
+.select-card:hover { border-color: rgba(216,255,69,.5); }
+.select-card--active { border-color: var(--safe-secure); background: linear-gradient(135deg, rgba(216,255,69,.09), transparent 55%), var(--safe-metal-1); }
+.select-card--compact { align-items: flex-start; }
+.select-card--compact .game-emblem { width: 26px; height: 26px; color: var(--safe-secure); }
+.select-card--active .game-emblem { color: var(--safe-secure); }
+.workshop-alert { margin: 0; padding: 8px 10px; color: var(--safe-danger); border: 1px solid rgba(255,91,50,.4); background: rgba(255,91,50,.08); font-size: 12px; }
+.workshop-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.workshop-actions button { min-height: 46px; gap: 6px; border-radius: 3px; }
+
+/* Inline difficulty preview */
+.workshop-preview { display: flex; flex-direction: column; gap: 6px; padding: 11px; }
+.workshop-preview__row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.workshop-preview__row span { color: var(--color-text-dim); }
+.workshop-preview__row strong { color: var(--state-color); font-weight: 800; }
+.workshop-preview__row--dim { font-size: 10px; }
+.workshop-preview__verdict { margin: 2px 0 0; color: var(--state-color); font-size: 11px; line-height: 1.4; }
+
+/* Your games list */
+.workshop-list { display: flex; flex-direction: column; gap: 9px; }
+.workshop-game { min-height: 0; padding: 11px; display: flex; flex-direction: column; gap: 8px; }
+.workshop-game__desc { margin: 0; color: var(--color-text-dim); font-size: 11px; line-height: 1.4; }
+.workshop-game__desc--muted { font-style: italic; }
+.workshop-note { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--color-text-secondary); font-size: 10px; line-height: 1.4; }
+.workshop-note svg { flex: none; margin-top: 1px; color: var(--safe-warning); }
+.workshop-note--warn { color: var(--safe-warning); }
+.workshop-empty { margin-top: 2px; }
+
+@media (min-width: 700px) {
+  .workshop-templates__row { grid-auto-columns: 150px; }
+  .select-grid { grid-template-columns: 1fr 1fr 1fr; }
+  .workshop-list { display: grid; grid-template-columns: 1fr 1fr; }
+  .workshop-list .eyebrow { grid-column: 1 / -1; }
+}
 
 /* Composition warning: safe has no server-verifiable lock (SECURITY). */
 .verify-warning { min-height: 78px; padding: 12px; display: flex; align-items: center; gap: 10px; }
