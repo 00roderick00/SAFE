@@ -4,6 +4,7 @@ import { api, migrateLocalIfNeeded } from './api';
 import { usePlayerStore } from '../store/playerStore';
 import { migrateRetiredLoadout } from '../game/roster';
 import { calculateSecurityScore } from '../game/economy';
+import { getUnlockTier } from '../game/progression';
 
 /**
  * On every fresh session, hydrate the client stores from the server.
@@ -56,6 +57,26 @@ export function useHydrateFromServer(session: Session | null) {
         const safe = await api.getSafe(userId);
         const profile = await api.getProfile(userId);
         if (cancelled) return;
+
+        // Progressive-disclosure ladder: derive the unlock tier from
+        // the server's attack ledger. Counts only ever raise the local
+        // tier (grandfathering — an account with recorded heists can
+        // never regress to tier 0), and hydration-driven tier jumps are
+        // marked pre-announced so returning players on a fresh device
+        // aren't shown unlock fanfare for surfaces they've had for ages.
+        try {
+          const stats = await api.getAttackStats(userId);
+          if (cancelled) return;
+          const store = usePlayerStore.getState();
+          store.setProgressionFromServer(stats.completed, stats.won);
+          const after = usePlayerStore.getState();
+          store.markTierAnnounced(
+            getUnlockTier({ completedHeists: after.completedHeists, successfulHeists: after.successfulHeists }),
+          );
+        } catch (statsErr) {
+          // eslint-disable-next-line no-console
+          console.warn('[hydrate] attack-stats fetch failed', statsErr);
+        }
         if (safe) {
           // Tactile-redesign migration: if the server-stored loadout
           // still holds a retired built-in, substitute its kept analog

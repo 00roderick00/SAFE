@@ -9,6 +9,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
+  Lock as LockIcon,
   TestTube2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -25,6 +26,8 @@ import { api } from '../services/api';
 import { useSession } from '../services/useSession';
 import { useGameStore } from '../store/gameStore';
 import { usePlayerStore } from '../store/playerStore';
+import { useSurfaceUnlocked } from '../store/useUnlockTier';
+import { requirementFor } from '../game/progression';
 import { haptics } from '../utils/haptics';
 
 const formatTokens = (value: number) => `${Math.round(value).toLocaleString()} TK`;
@@ -56,6 +59,7 @@ export const HomeScreen = () => {
 
   const stats = calculateEconomyStats(safeBalance, securityLoadout);
   const insured = Boolean(insurancePolicy && now < insurancePolicy.expiresAt);
+  const insuranceUnlocked = useSurfaceUnlocked('insurance');
   const latestDefense = defenseHistory[0];
   const latestDefenseAge = latestDefense ? now - latestDefense.timestamp : Infinity;
   const vaultState: VaultState = heistModeActive
@@ -221,9 +225,20 @@ export const HomeScreen = () => {
           <button className="btn-secondary" onClick={() => navigate('/security?test=sequence')}>
             <TestTube2 size={18} aria-hidden="true" /> Test my vault
           </button>
-          <button className="btn-secondary" onClick={() => navigate('/insurance')}>
-            <ShieldCheck size={18} aria-hidden="true" /> Insurance
-          </button>
+          {insuranceUnlocked ? (
+            <button className="btn-secondary" onClick={() => navigate('/insurance')}>
+              <ShieldCheck size={18} aria-hidden="true" /> Insurance
+            </button>
+          ) : (
+            <button
+              className="btn-secondary opacity-45 cursor-not-allowed"
+              aria-disabled="true"
+              title={`${requirementFor('insurance')} to unlock`}
+              aria-label={`Insurance — locked. ${requirementFor('insurance')}.`}
+            >
+              <LockIcon size={18} aria-hidden="true" /> Insurance
+            </button>
+          )}
         </div>
 
         <section className="home-section">

@@ -94,6 +94,13 @@ export interface PlayerState {
   totalLosses: number;
   successfulDefenses: number;
   successfulHeists: number;
+  /** Settled heists as attacker (win/loss/abandon) — drives the
+   *  progressive-disclosure unlock tier. Hydrated from the server's
+   *  attack rows on every session; local increments are instant UI. */
+  completedHeists: number;
+  /** Highest unlock tier already announced to this player, so tier
+   *  jumps from hydration (grandfathering) don't replay announcements. */
+  lastAnnouncedTier: number;
   lastActiveAt: number;
   onboardingCompleted: boolean;
 }

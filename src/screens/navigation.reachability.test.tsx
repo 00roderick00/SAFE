@@ -61,6 +61,10 @@ beforeEach(() => {
   listOwnCustomGames.mockResolvedValue([]);
   getSession.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
   usePlayerStore.getState().resetPlayer();
+  // These tests assert the fully-unlocked app is reachable; the
+  // progressive-disclosure ladder itself is covered in
+  // progressionGating.test.tsx. Grandfather to tier 3.
+  usePlayerStore.getState().setProgressionFromServer(5, 1);
 });
 
 describe('main-nav entry point', () => {
@@ -105,15 +109,15 @@ describe('Security screen actions', () => {
     renderSecurity();
     expect(screen.getByRole('region', { name: 'Defensive mix analysis' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Equipped lock sequence' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Test Pattern Lock' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Replace Pattern Lock' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Test Keypad' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Replace Keypad' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Move Keypad earlier' }));
-    expect(usePlayerStore.getState().securityLoadout.modules[0].type).toBe('keypad');
+    fireEvent.click(screen.getByRole('button', { name: 'Move Slider earlier' }));
+    expect(usePlayerStore.getState().securityLoadout.modules[0].type).toBe('slider');
     await waitFor(() => expect(updateLoadout).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole('button', { name: /Test full sequence/i }));
-    expect(screen.getByRole('dialog', { name: 'Keypad' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Slider' })).toBeInTheDocument();
     expect(screen.getByText('Practice only. No stake, loot, or balance changes.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close defense test' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());

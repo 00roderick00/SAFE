@@ -6,6 +6,7 @@ import { PlayerState, SecurityModule, InsurancePolicy, ModuleType } from '../typ
 import { ECONOMY, MODULE_CONFIG } from '../game/constants';
 import { calculateSecurityScore } from '../game/economy';
 import { isRetiredModuleType, migrateRetiredLoadout } from '../game/roster';
+import { getUnlockTier } from '../game/progression';
 
 interface PlayerStore extends PlayerState {
   // Actions
@@ -27,6 +28,9 @@ interface PlayerStore extends PlayerState {
   exitHeistMode: () => void;
   recordSuccessfulDefense: () => void;
   recordSuccessfulHeist: () => void;
+  recordCompletedHeist: () => void;
+  setProgressionFromServer: (completedHeists: number, successfulHeists: number) => void;
+  markTierAnnounced: (tier: number) => void;
   completeOnboarding: () => void;
   updateRiskRating: (delta: number) => void;
   resetPlayer: () => void;
@@ -45,10 +49,13 @@ const createDefaultModule = (type: ModuleType, index: number): SecurityModule =>
 };
 
 const createDefaultLoadout = () => {
+  // Tier-0 defaults (TACTILE-REDESIGN §3): the three simplest tap games.
+  // Keypad stays in slot 0 so every default safe has a server-verifiable
+  // lock (composition guarantee, PROGRESS-SECURITY.md).
   const modules = [
-    createDefaultModule('pattern', 0),
-    createDefaultModule('keypad', 1),
-    createDefaultModule('timing', 2),
+    createDefaultModule('keypad', 0),
+    createDefaultModule('slider', 1),
+    createDefaultModule('memorymatch', 2),
   ];
 
   return {
@@ -70,6 +77,8 @@ const initialState: PlayerState = {
   totalLosses: 0,
   successfulDefenses: 0,
   successfulHeists: 0,
+  completedHeists: 0,
+  lastAnnouncedTier: 0,
   lastActiveAt: Date.now(),
   onboardingCompleted: false,
 };
@@ -231,6 +240,32 @@ export const usePlayerStore = create<PlayerStore>()(
           successfulHeists: state.successfulHeists + 1,
         })),
 
+      recordCompletedHeist: () =>
+        set((state) => ({
+          completedHeists: state.completedHeists + 1,
+        })),
+
+      setProgressionFromServer: (completedHeists, successfulHeists) =>
+        set((state) => {
+          // Server truth can only raise progression, never regress it —
+          // grandfathering for accounts with recorded heists. Tier jumps
+          // from hydration are marked pre-announced in the same update
+          // so returning players never see catch-up unlock fanfare.
+          const merged = {
+            completedHeists: Math.max(state.completedHeists, completedHeists),
+            successfulHeists: Math.max(state.successfulHeists, successfulHeists),
+          };
+          return {
+            ...merged,
+            lastAnnouncedTier: Math.max(state.lastAnnouncedTier, getUnlockTier(merged)),
+          };
+        }),
+
+      markTierAnnounced: (tier) =>
+        set((state) => ({
+          lastAnnouncedTier: Math.max(state.lastAnnouncedTier, tier),
+        })),
+
       completeOnboarding: () => set({ onboardingCompleted: true }),
 
       updateRiskRating: (delta) =>
@@ -248,7 +283,22 @@ export const usePlayerStore = create<PlayerStore>()(
       // count is unchanged — retired types are all class-2).
       version: 1,
       migrate: (persisted) => {
-        const state = persisted as PlayerState;
+        let state = persisted as PlayerState;
+        // Progressive-disclosure grandfathering: any pre-ladder profile
+        // with evidence of play keeps full access — never regress an
+        // existing player to tier 0. (Server hydration re-asserts the
+        // real counts for signed-in users.)
+        const playedBefore =
+          (state?.successfulHeists ?? 0) > 0 ||
+          (state?.totalEarnings ?? 0) > 0 ||
+          (state?.totalLosses ?? 0) > 0;
+        if (state && state.completedHeists === undefined) {
+          state = {
+            ...state,
+            completedHeists: playedBefore ? 5 : 0,
+            lastAnnouncedTier: playedBefore ? 3 : 0,
+          };
+        }
         if (state?.securityLoadout?.modules) {
           const { loadout, changed } = migrateRetiredLoadout(state.securityLoadout);
           if (changed) {

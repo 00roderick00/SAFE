@@ -28,6 +28,8 @@ import { useSession } from '../services/useSession';
 import { usePlayerStore } from '../store/playerStore';
 import type { ModuleType, SecurityModule } from '../types';
 import { sanitizeUserText } from '../utils/sanitize';
+import { useSurfaceUnlocked } from '../store/useUnlockTier';
+import { requirementFor } from '../game/progression';
 
 type PickerTab = 'arcade' | 'puzzle' | 'classic' | 'community' | 'recent' | 'favorites';
 const TABS: { id: PickerTab; label: string }[] = [
@@ -48,6 +50,8 @@ export const GamePickerScreen = () => {
   const index = Number.parseInt(slotIndex || '0', 10);
   const { securityLoadout, setModuleType, setModuleDifficulty } = usePlayerStore();
   const currentModule = securityLoadout.modules[index];
+  const marketUnlocked = useSurfaceUnlocked('marketplace');
+  const createUnlocked = useSurfaceUnlocked('create');
   const [selectedType, setSelectedType] = useState<ModuleType>(currentModule?.type || 'pattern');
   const [selectedCustom, setSelectedCustom] = useState<CustomGame | null>(null);
   const [difficulty, setDifficulty] = useState(currentModule?.difficulty ?? .5);
@@ -197,7 +201,18 @@ export const GamePickerScreen = () => {
         </div>
 
         {activeTab === 'community' && (
-          <div className="community-tools"><button onClick={() => navigate('/custom-games')}><Sparkles size={16} /> Build your own game</button><button onClick={() => navigate('/marketplace')}><Store size={16} /> Browse all</button></div>
+          <div className="community-tools">
+            {createUnlocked ? (
+              <button onClick={() => navigate('/custom-games')}><Sparkles size={16} /> Build your own game</button>
+            ) : (
+              <button className="opacity-45 cursor-not-allowed" aria-disabled="true" title={`${requirementFor('create')} to unlock`}><Sparkles size={16} /> Build your own game</button>
+            )}
+            {marketUnlocked ? (
+              <button onClick={() => navigate('/marketplace')}><Store size={16} /> Browse all</button>
+            ) : (
+              <button className="opacity-45 cursor-not-allowed" aria-disabled="true" title={`${requirementFor('marketplace')} to unlock`}><Store size={16} /> Browse all</button>
+            )}
+          </div>
         )}
 
         <section className="rich-game-grid" aria-label={`${TABS.find((tab) => tab.id === activeTab)?.label} games`}>

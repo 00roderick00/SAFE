@@ -7,6 +7,7 @@ import { generateBotFeed, generatePracticeSafe } from '../game/matchmaking';
 import { ECONOMY } from '../game/constants';
 import { calculateAttackFee, processInsuranceClaim } from '../game/economy';
 import { api } from '../services/api';
+import { usePlayerStore } from './playerStore';
 
 interface GameStore {
   // State
@@ -111,10 +112,15 @@ export const useGameStore = create<GameStore>()(
         return safe;
       },
 
-      addAttackResult: (result) =>
+      addAttackResult: (result) => {
         set((state) => ({
           attackHistory: [result, ...state.attackHistory].slice(0, 50), // keep last 50
-        })),
+        }));
+        // Every settled heist (win or lose) advances the progressive-
+        // disclosure ladder; the durable count lives in the server's
+        // attack rows and re-hydrates on the next session.
+        usePlayerStore.getState().recordCompletedHeist();
+      },
 
       addDefenseEvent: (event) =>
         set((state) => ({

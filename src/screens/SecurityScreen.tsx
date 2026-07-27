@@ -11,6 +11,7 @@ import {
   Shield,
   Sparkles,
   Store,
+  LockKeyhole,
   TestTube2,
   X,
 } from 'lucide-react';
@@ -18,6 +19,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GameEmblem, GameIcon, StateBadge, StateFrame } from '../components/game';
 import { MiniGameHost } from '../components/minigames';
 import { getCatalogMeta, getDefenseMix } from '../game/catalog';
+import { requirementFor } from '../game/progression';
+import { useSurfaceUnlocked } from '../store/useUnlockTier';
 import { calculateEconomyStats } from '../game/economy';
 import { isVerifiableModule } from '../game/lockSolutions';
 import { api } from '../services/api';
@@ -42,6 +45,9 @@ export const SecurityScreen = () => {
   const [testResults, setTestResults] = useState<MiniGameResult[]>([]);
   const stats = calculateEconomyStats(safeBalance, securityLoadout);
   const insured = Boolean(insurancePolicy && now < insurancePolicy.expiresAt);
+  const marketUnlocked = useSurfaceUnlocked('marketplace');
+  const createUnlocked = useSurfaceUnlocked('create');
+  const insuranceUnlocked = useSurfaceUnlocked('insurance');
   const mix = getDefenseMix(securityLoadout.modules.map((module) => module.type));
   // Composition guarantee: a safe with no server-verifiable lock cannot
   // defend real stakes — the server can't prove any lock was actually
@@ -141,11 +147,23 @@ export const SecurityScreen = () => {
         </section>
 
         <section className="defense-tools">
-          <button onClick={() => navigate('/custom-games')}><span><Sparkles size={19} /><b>Build a game</b><small>Create a custom defense with the existing verified runtime.</small></span><ChevronRight /></button>
-          <button onClick={() => navigate('/marketplace')}><span><Store size={19} /><b>Browse community games</b><small>Equip a calibrated creator game and preserve royalties.</small></span><ChevronRight /></button>
+          {createUnlocked ? (
+            <button onClick={() => navigate('/custom-games')}><span><Sparkles size={19} /><b>Build a game</b><small>Create a custom defense with the existing verified runtime.</small></span><ChevronRight /></button>
+          ) : (
+            <button className="opacity-45 cursor-not-allowed" aria-disabled="true" aria-label={`Build a game — locked. ${requirementFor('create')}.`}><span><Sparkles size={19} /><b>Build a game</b><small>{requirementFor('create')} to unlock.</small></span><LockKeyhole size={16} /></button>
+          )}
+          {marketUnlocked ? (
+            <button onClick={() => navigate('/marketplace')}><span><Store size={19} /><b>Browse community games</b><small>Equip a calibrated creator game and preserve royalties.</small></span><ChevronRight /></button>
+          ) : (
+            <button className="opacity-45 cursor-not-allowed" aria-disabled="true" aria-label={`Community games — locked. ${requirementFor('marketplace')}.`}><span><Store size={19} /><b>Browse community games</b><small>{requirementFor('marketplace')} to unlock.</small></span><LockKeyhole size={16} /></button>
+          )}
         </section>
 
-        <StateFrame state={insured ? 'secure' : 'warning'} className="insurance-link" label="Insurance state"><Shield size={22} /><div><p className="eyebrow">INSURANCE</p><strong>{insured ? `${Math.round((insurancePolicy?.coverage ?? 0) * 100)}% coverage active` : 'No active loss coverage'}</strong></div><button className="text-button" onClick={() => navigate('/insurance')}>{insured ? 'Manage' : 'Review plans'} <ChevronRight size={15} /></button></StateFrame>
+        {insuranceUnlocked ? (
+          <StateFrame state={insured ? 'secure' : 'warning'} className="insurance-link" label="Insurance state"><Shield size={22} /><div><p className="eyebrow">INSURANCE</p><strong>{insured ? `${Math.round((insurancePolicy?.coverage ?? 0) * 100)}% coverage active` : 'No active loss coverage'}</strong></div><button className="text-button" onClick={() => navigate('/insurance')}>{insured ? 'Manage' : 'Review plans'} <ChevronRight size={15} /></button></StateFrame>
+        ) : (
+          <StateFrame state="warning" className="insurance-link opacity-60" label="Insurance state"><Shield size={22} /><div><p className="eyebrow">INSURANCE</p><strong>Locked — {requirementFor('insurance').toLowerCase()}</strong></div><LockKeyhole size={16} aria-hidden="true" /></StateFrame>
+        )}
       </main>
 
       <AnimatePresence>

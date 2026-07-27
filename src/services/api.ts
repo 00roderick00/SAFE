@@ -288,6 +288,24 @@ export const api = {
     return data;
   },
 
+  /** Progression counters derived from the server's attack ledger —
+   *  the durable source of truth for the unlock ladder (§3). */
+  async getAttackStats(userId: string): Promise<{ completed: number; won: number }> {
+    const { count: completed, error: completedErr } = await supabase
+      .from('attacks')
+      .select('id', { count: 'exact', head: true })
+      .eq('attacker_id', userId)
+      .neq('status', 'pending');
+    if (completedErr) throw completedErr;
+    const { count: won, error: wonErr } = await supabase
+      .from('attacks')
+      .select('id', { count: 'exact', head: true })
+      .eq('attacker_id', userId)
+      .eq('status', 'won');
+    if (wonErr) throw wonErr;
+    return { completed: completed ?? 0, won: won ?? 0 };
+  },
+
   async listPendingAttacks(userId: string): Promise<{ id: string; created_at: string }[]> {
     const { data, error } = await supabase
       .from('attacks')

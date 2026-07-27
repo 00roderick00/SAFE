@@ -1,29 +1,82 @@
 import { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   Vault,
   Crosshair,
   Shield,
   Gamepad2,
   History,
+  Lock,
 } from 'lucide-react';
+import { usePlayerStore } from '../store/playerStore';
+import {
+  getUnlockTier,
+  isSurfaceUnlocked,
+  requirementFor,
+  TIER_UNLOCKS,
+  type GatedSurface,
+  type UnlockTier,
+} from '../game/progression';
 interface LayoutProps {
   children: ReactNode;
 }
 
-const navItems = [
+// Progressive disclosure (§3): Safe + Heist are always visible; the
+// rest unlock by tier. Locked items stay VISIBLE with their unlock
+// condition — the depth is staged, not hidden.
+const navItems: { path: string; icon: typeof Vault; label: string; surface?: GatedSurface }[] = [
   { path: '/', icon: Vault, label: 'Safe' },
-  { path: '/security', icon: Shield, label: 'Security' },
+  { path: '/security', icon: Shield, label: 'Security', surface: 'security' },
   { path: '/heist', icon: Crosshair, label: 'Heist' },
   // Entry point to the AI game builder + community marketplace, which
   // were previously unreachable from the main app navigation.
-  { path: '/custom-games', icon: Gamepad2, label: 'Create' },
-  { path: '/history', icon: History, label: 'History' },
+  { path: '/custom-games', icon: Gamepad2, label: 'Create', surface: 'create' },
+  { path: '/history', icon: History, label: 'History', surface: 'history' },
 ];
+
+/** Brief, skippable unlock moment. Renders when the live tier is ahead
+ *  of the last announced one (never on hydration catch-up — that path
+ *  pre-marks its tier as announced). */
+const UnlockAnnouncement = ({ fromTier, toTier, onDismiss }: { fromTier: number; toTier: UnlockTier; onDismiss: () => void }) => {
+  const crossed = ([1, 2, 3] as const).filter((t) => t > fromTier && t <= toTier);
+  if (crossed.length === 0) return null;
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm px-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      role="dialog"
+      aria-label="New features unlocked"
+      onClick={onDismiss}
+    >
+      <motion.div
+        className="max-w-sm w-full p-6 text-center rounded-xl border border-primary/40 bg-background shadow-2xl"
+        initial={{ scale: 0.9, y: 12 }}
+        animate={{ scale: 1, y: 0 }}
+      >
+        {crossed.map((t) => (
+          <div key={t} className="mb-4 last:mb-0">
+            <p className="font-display text-lg font-bold text-primary neon-text-primary">{TIER_UNLOCKS[t].title}</p>
+            <p className="text-text-dim text-sm mt-1">{TIER_UNLOCKS[t].details}</p>
+          </div>
+        ))}
+        <button className="btn-neon mt-4 w-full" onClick={onDismiss}>
+          Continue
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+};
 
 export const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
+  const completedHeists = usePlayerStore((s) => s.completedHeists);
+  const successfulHeists = usePlayerStore((s) => s.successfulHeists);
+  const lastAnnouncedTier = usePlayerStore((s) => s.lastAnnouncedTier);
+  const markTierAnnounced = usePlayerStore((s) => s.markTierAnnounced);
+  const tier = getUnlockTier({ completedHeists, successfulHeists });
 
   // Hide nav on attack screen
   const hideNav = location.pathname.startsWith('/attack');
@@ -36,12 +89,43 @@ export const Layout = ({ children }: LayoutProps) => {
       </main>
 
       {/* Bottom Navigation */}
+      <AnimatePresence>
+        {tier > lastAnnouncedTier && (
+          <UnlockAnnouncement
+            fromTier={lastAnnouncedTier}
+            toTier={tier}
+            onDismiss={() => markTierAnnounced(tier)}
+          />
+        )}
+      </AnimatePresence>
+
       {!hideNav && (
         <nav className="app-nav" aria-label="Primary navigation">
           <div className="app-nav__inner">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
               const Icon = item.icon;
+
+              if (item.surface && !isSurfaceUnlocked(item.surface, tier)) {
+                return (
+                  <div
+                    key={item.path}
+                    className="app-nav__item opacity-45 cursor-not-allowed select-none"
+                    role="link"
+                    aria-disabled="true"
+                    aria-label={`${item.label} — locked. ${requirementFor(item.surface)}.`}
+                    title={`${requirementFor(item.surface)} to unlock`}
+                  >
+                    <div className="flex flex-col items-center justify-center text-text-dim">
+                      <span className="relative">
+                        <Icon size={24} aria-hidden="true" />
+                        <Lock size={11} aria-hidden="true" className="absolute -right-1.5 -bottom-0.5" />
+                      </span>
+                      <span className="text-xs mt-1 font-medium">{item.label}</span>
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <NavLink

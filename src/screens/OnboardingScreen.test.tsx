@@ -23,7 +23,7 @@ describe('interactive onboarding', () => {
     expect(before).toBeDisabled();
     expect(screen.queryByRole('button', { name: /^Continue$/i })).not.toBeInTheDocument();
     // Inspect the lock.
-    fireEvent.click(screen.getByRole('button', { name: /Lock 1: Pattern Lock/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Lock 1: Keypad/i }));
     // After inspection: CTA becomes "Continue" and is enabled; the old
     // "Tap a lock to continue" label is gone.
     const after = screen.getByRole('button', { name: /^Continue$/i });
@@ -34,7 +34,7 @@ describe('interactive onboarding', () => {
   it('completes the interactive practice flow', async () => {
     const onComplete = vi.fn();
     render(<OnboardingScreen onComplete={onComplete} />);
-    fireEvent.click(screen.getByRole('button', { name: /Lock 1: Pattern Lock/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Lock 1: Keypad/i }));
     fireEvent.click(screen.getByRole('button', { name: /^Continue$/i }));
     for (const node of [1, 2, 3]) fireEvent.click(await screen.findByRole('button', { name: `Pattern node ${node}` }));
     fireEvent.click(await screen.findByRole('button', { name: /See the breach/i }));
@@ -57,7 +57,7 @@ describe('interactive onboarding', () => {
       const btn = screen.queryByRole('button', { name });
       if (btn) fireEvent.click(btn);
     };
-    fireEvent.click(screen.getByRole('button', { name: /Lock 1: Pattern Lock/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Lock 1: Keypad/i }));
     clickNext(/^Continue$/i);
     for (const node of [1, 2, 3]) {
       const n = screen.queryByRole('button', { name: `Pattern node ${node}` });

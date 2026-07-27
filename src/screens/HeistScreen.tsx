@@ -26,6 +26,7 @@ import { useSession } from '../services/useSession';
 import { useGameStore } from '../store/gameStore';
 import { useHeistStore } from '../store/heistStore';
 import { usePlayerStore } from '../store/playerStore';
+import { useUnlockTier } from '../store/useUnlockTier';
 import type { BotSafe } from '../types';
 import { haptics } from '../utils/haptics';
 
@@ -44,6 +45,8 @@ export const HeistScreen = () => {
   const [selectedTarget, setSelectedTarget] = useState<BotSafe | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('net-desc');
+  const unlockTier = useUnlockTier();
+  const firstHeist = unlockTier === 0;
   const [familiarityFilter, setFamiliarityFilter] = useState<FamiliarityFilter>('all');
   const [maxDifficulty, setMaxDifficulty] = useState<'all' | 'soft' | 'tricky' | 'brutal'>('all');
   const {
@@ -114,12 +117,18 @@ export const HeistScreen = () => {
       return true;
     });
     return [...filtered].sort((a, b) => {
+      // First-heist onboarding (§3 tier 0): soft practice bots surface
+      // first so a brand-new player's opening raid is a gentle one.
+      if (firstHeist) {
+        const band = difficultyRank[a.difficultyBand] - difficultyRank[b.difficultyBand];
+        if (band !== 0) return band;
+      }
       if (sortMode === 'stake-asc') return a.attackFee - b.attackFee;
       if (sortMode === 'stake-desc') return b.attackFee - a.attackFee;
       if (sortMode === 'difficulty-asc') return difficultyRank[a.difficultyBand] - difficultyRank[b.difficultyBand];
       return getPayoutPresentation(b.safeBalance).netPayout - getPayoutPresentation(a.safeBalance).netPayout;
     });
-  }, [botSafes, familiarTypes, familiarityFilter, maxDifficulty, sortMode]);
+  }, [botSafes, familiarTypes, familiarityFilter, maxDifficulty, sortMode, firstHeist]);
 
   const handleStartExposure = () => {
     haptics.heavy();
@@ -232,7 +241,7 @@ export const HeistScreen = () => {
               <div className="dossier-card__head">
                 <TargetSafeGraphic size={62} difficulty={target.difficultyBand} />
                 <div className="dossier-card__identity">
-                  <span className="eyebrow">{practice ? 'PRACTICE BOT' : 'LIVE VAULT'}</span>
+                  <span className="eyebrow">{firstHeist && index === 0 && target.difficultyBand === 'soft' ? 'GOOD FIRST TARGET' : practice ? 'PRACTICE BOT' : 'LIVE VAULT'}</span>
                   <strong>{target.ownerName}</strong>
                   {target.tagline && (
                     <em className="dossier-card__flavor" title="Callsign — flavor text, not a game state">“{target.tagline}”</em>
