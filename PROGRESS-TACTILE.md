@@ -200,3 +200,109 @@ puzzle category, ♞) and equippable like any lock.
 - Edge Functions redeployed to `cqacfzkyxmtmjzpksznj`: `submit_result` (bundles the new chess engine + verify branch), `start_attack`, `list_targets`, `resolve_defense` (retired-roster bot pools).
   No DB migrations needed (progression derives from existing attack
   rows; retirement/chess logic lives in function code).
+
+## 7. Follow-up (2026-07-27): version-skew incident, guards, backfill
+
+### 7.1 The live bug
+
+The Edge Functions were redeployed with `chesspuzzle` in the dealable
+roster while `main` — and therefore the shipped frontend — still had no
+component for it. `MiniGameHost` rendered "Unknown module … Counting as
+a failed lock", so under all-or-nothing a player who drew one of those
+targets (~6% of live targets; 5 of 6 sampled lists contained one)
+forfeited their whole stake through no fault of their own.
+
+**Fixed** by merging `codex-rebuild` into `main` and pushing
+(commit `7df16b8`), which triggered the Vercel deploy.
+
+**Verified live** on safe-orpin-xi.vercel.app: the new bundle
+(`assets/index-Dk2BLbAM.js`) contains `chesspuzzle`; a real exposed
+heist against a bot dealt a "Checkmate" lock in slot 2 with its crown
+glyph in the breach rail (no "Unknown module"); and the game itself was
+played to completion in the Security → Try-it harness — board rendered
+"Mate in 1 · White to move" with a legal position (black king a8, white
+queen h7, rook g5, king e4), tapping the rook then g8 highlighted legal
+destinations and played **Rg8#**, which the component accepted as a win.
+No console errors. "Checkmate" is also selectable and equippable in the
+game picker.
+
+### 7.2 Guard (a) — an unrenderable lock never costs a stake
+
+**Choice: void the attack and refund**, rather than skipping the module.
+
+A non-scoring *skip* would be unsafe: under all-or-nothing, a module
+that "doesn't count" is one fewer thing standing between an attacker and
+the loot, so forcing an unrenderable module would become a cheaper
+breach. A *void* has no such edge — it pays zero loot and moves no
+defender balance, so it is exactly equivalent to never having attacked
+and is strictly worse for an attacker than a genuine win.
+
+- `verifyAttack` now reports `unsupportedCount` / `unsupportedTypes`,
+  computed from the **server's own loadout snapshot** (never a client
+  claim, so it can't be triggered on demand). The module is still
+  recorded as **not passed** and `allPassed` is false.
+- `submit_result` voids on `unsupportedCount > 0`: status `abandoned`,
+  loot 0, a single `attack_void_refund` ledger entry returning the
+  stake, no defender movement, no insurance, no royalties. The client
+  surfaces "Raid voided — nothing lost" and skips MMR/history.
+- `MiniGameHost` no longer scores the unknown module as a failed lock;
+  it offers "End raid & refund stake" and routes to that settlement.
+
+Tested both directions (`verify.unsupported.test.ts`,
+`submit_result.void.test.ts`): the player is refunded and made whole and
+the lock they *did* beat is still credited; and a forged all-pass over
+an unrenderable lock yields a void with zero loot, cannot rescue an
+otherwise-failed attack, and does not inflate `verifiableCount`.
+
+### 7.3 Guard (b) — the server can't deal what the client can't render
+
+- `SUPPORTED_MODULE_TYPES` in `_shared/roster.ts` is the shipped
+  contract; `clientSupportedModuleTypes()` reports the actual client
+  registry keys and is sent with `start_attack`.
+- `start_attack` intersects the two and refuses **before debiting the
+  stake** — 409 `unsupported_module_types`, no attack row, no ledger
+  entry. Omitting the field (an older client) falls back to the server
+  contract, so the guard is backward-compatible.
+- `rosterContract.test.ts` asserts server-dealable ⊆ client registry
+  (and that every `MODULE_CONFIG` type has a component), so CI fails if
+  the two ever drift again — which is what would have caught this.
+
+### 7.4 Backfill of retired loadouts
+
+Retirement migration was lazy (client-side on login), so safes whose
+owners hadn't logged in since still publicly served retired games —
+trevor.mentis was live with `spaceinvaders`.
+
+`migrations/20260727120000_backfill_retired_loadouts.sql` applies the
+same replacement map server-side to every safe in one idempotent,
+self-verifying transaction (it raises and rolls back if any safe still
+carries a retired type afterwards, or if a module array is corrupted).
+Custom games are skipped. `retiredBackfill.test.ts` parses the SQL and
+asserts its map equals `RETIRED_REPLACEMENTS` and its names/weights
+equal `MODULE_CONFIG`, so the SQL cannot drift from the TypeScript.
+
+**Applied to production** (`supabase db push`): *1 safe to migrate, 1
+safe rewritten, verified — 0 safes carry a retired type*. Independently
+re-checked through the public view: all 7 rows in
+`public_safe_snapshots` are clean, and trevor.mentis now reads
+`breakout, keypad, timing`.
+
+**Invariant re-asserted:** every retired type and every replacement is
+class-2, so `verifiableCount` is unchanged for every migrated safe
+(tested for all 11 retired types across three compositions, plus
+trevor.mentis's exact live loadout, which keeps its `keypad`). No safe
+became forgeable; the guarantee in PROGRESS-SECURITY.md is intact.
+
+`effectiveScore` is deliberately left as stored — it is a cached display
+value; `start_attack` recomputes the security score from the loadout
+itself, and the client recomputes on hydrate.
+
+### 7.5 State
+
+- Suite **405 passing** (was 381), build + lint green.
+- Edge Functions redeployed: `start_attack`, `submit_result` (guards),
+  earlier `list_targets`, `resolve_defense`. Migration pushed.
+- `main` has the tactile release (§1–§6). The §7 guards are committed on
+  `codex-rebuild` and **not merged** — the deployed server side is
+  backward-compatible with the current `main` bundle, so nothing is
+  broken while they await your review.
