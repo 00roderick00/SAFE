@@ -83,6 +83,30 @@ interface State {
   reason?: string;
 }
 
+type Dir = 'up' | 'down' | 'left' | 'right' | 'idle';
+
+/** One greedy step from the player toward a tapped target cell, using the
+ *  same axis preference as enemy chase movement. Returns 'idle' when both
+ *  axes are blocked (caller drops the target). */
+function greedyStepToward(game: DslGame, state: State, player: DslEntity, target: { x: number; y: number }): Dir {
+  const ddx = target.x - player.x;
+  const ddy = target.y - player.y;
+  const opts: [number, number, Dir][] = [];
+  const xOpt: [number, number, Dir] = [Math.sign(ddx), 0, ddx < 0 ? 'left' : 'right'];
+  const yOpt: [number, number, Dir] = [0, Math.sign(ddy), ddy < 0 ? 'up' : 'down'];
+  if (Math.abs(ddx) >= Math.abs(ddy)) {
+    if (ddx !== 0) opts.push(xOpt);
+    if (ddy !== 0) opts.push(yOpt);
+  } else {
+    if (ddy !== 0) opts.push(yOpt);
+    if (ddx !== 0) opts.push(xOpt);
+  }
+  for (const [dx, dy, dir] of opts) {
+    if (isPassable(game, state, player.x + dx, player.y + dy, 'player')) return dir;
+  }
+  return 'idle';
+}
+
 function isPassable(game: DslGame, state: State, x: number, y: number, byKind: 'player' | 'enemy'): boolean {
   if (x < 0 || y < 0 || x >= game.board.width || y >= game.board.height) return false;
   for (const e of state.entities) {
@@ -116,8 +140,21 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
     return { tick: 0, entities, collected: new Set(), status: 'running' };
   }, [game]);
   const [state, setState] = useState<State | null>(initial);
-  const [inputDir, setInputDir] = useState<'up' | 'down' | 'left' | 'right' | 'idle'>('idle');
   const [now, setNow] = useState(0);
+
+  // Touch-first input (tactile redesign): tap a board cell to walk toward
+  // it, swipe on the board for a single step, keyboard as secondary.
+  // `queuedDirRef` holds an explicit one-step command (swipe/keyboard);
+  // `target` is a tapped destination the player auto-walks toward, one
+  // greedy step per tick. Every applied direction still lands in the
+  // trace, so server replay verification is unchanged.
+  const queuedDirRef = useRef<Dir | null>(null);
+  const [target, setTarget] = useState<{ x: number; y: number } | null>(null);
+  const targetRef = useRef(target);
+  useEffect(() => { targetRef.current = target; }, [target]);
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Record the direction applied on each tick so the server can replay
   // the run from the same seed and verify the outcome (anti-cheat). The
@@ -127,14 +164,19 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
     traceRef.current = [];
   }, [game, seed]);
 
-  // Keyboard input.
+  // Keyboard input (secondary — touch is primary).
   useEffect(() => {
     if (!game) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') setInputDir('up');
-      else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') setInputDir('down');
-      else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') setInputDir('left');
-      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') setInputDir('right');
+      let dir: Dir | null = null;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') dir = 'up';
+      else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') dir = 'down';
+      else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') dir = 'left';
+      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') dir = 'right';
+      if (dir) {
+        queuedDirRef.current = dir;
+        setTarget(null);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -145,9 +187,24 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
     if (!game || !state || state.status !== 'running') return;
     const id = setInterval(() => {
       setNow((n) => n + 1);
+      // Resolve this tick's direction: an explicit swipe/key step wins;
+      // otherwise auto-walk one greedy step toward the tapped target.
+      let dir: Dir = queuedDirRef.current ?? 'idle';
+      queuedDirRef.current = null;
+      const cur = stateRef.current;
+      const tgt = targetRef.current;
+      if (dir === 'idle' && tgt && cur) {
+        const player = cur.entities.find((e) => e.kind === 'player');
+        if (!player || (player.x === tgt.x && player.y === tgt.y)) {
+          setTarget(null);
+        } else {
+          dir = greedyStepToward(game, cur, player, tgt);
+          if (dir === 'idle') setTarget(null);
+        }
+      }
       // Record the input applied on this tick (matches the direction the
-      // reducer below applies, since both read the same `inputDir`).
-      traceRef.current.push(inputDir);
+      // reducer below applies, since both read the same `dir`).
+      traceRef.current.push(dir);
       setState((prev) => {
         if (!prev || !game) return prev;
         const next: State = {
@@ -157,8 +214,8 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
           status: prev.status,
         };
         const player = next.entities.find((e) => e.kind === 'player')!;
-        const dx = inputDir === 'left' ? -1 : inputDir === 'right' ? 1 : 0;
-        const dy = inputDir === 'up' ? -1 : inputDir === 'down' ? 1 : 0;
+        const dx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
+        const dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
         if (dx !== 0 || dy !== 0) {
           const nx = player.x + dx;
           const ny = player.y + dy;
@@ -167,7 +224,6 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
             player.y = ny;
           }
         }
-        setInputDir('idle');
 
         // Enemies.
         for (const e of next.entities) {
@@ -237,7 +293,7 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
       });
     }, 1000 / TICK_HZ);
     return () => clearInterval(id);
-  }, [game, state?.status, inputDir]);
+  }, [game, state?.status]);
 
   // Finalise: report result when we transition out of running.
   useEffect(() => {
@@ -278,10 +334,43 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
       </div>
       <div
         role="application"
+        aria-label="Game board — tap a square to move there, swipe to step"
         tabIndex={0}
         className="relative bg-surface-light rounded-lg outline-none focus:ring-2 focus:ring-primary"
-        style={{ width: game.board.width * CELL_PX, height: game.board.height * CELL_PX }}
+        style={{ width: game.board.width * CELL_PX, height: game.board.height * CELL_PX, touchAction: 'none' }}
+        onPointerDown={(e) => {
+          pointerStartRef.current = { x: e.clientX, y: e.clientY };
+        }}
+        onPointerUp={(e) => {
+          const start = pointerStartRef.current;
+          pointerStartRef.current = null;
+          if (!start || state.status !== 'running') return;
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          if (Math.abs(dx) < 14 && Math.abs(dy) < 14) {
+            // Tap: walk toward the tapped cell (direct manipulation).
+            const rect = e.currentTarget.getBoundingClientRect();
+            const cx = Math.floor((e.clientX - rect.left) / CELL_PX);
+            const cy = Math.floor((e.clientY - rect.top) / CELL_PX);
+            if (cx >= 0 && cy >= 0 && cx < game.board.width && cy < game.board.height) {
+              queuedDirRef.current = null;
+              setTarget({ x: cx, y: cy });
+            }
+          } else {
+            // Swipe: one step in the dominant direction.
+            queuedDirRef.current =
+              Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
+            setTarget(null);
+          }
+        }}
       >
+        {target && state.status === 'running' && (
+          <div
+            aria-hidden
+            className="absolute rounded-sm ring-2 ring-primary/80 animate-pulse"
+            style={{ left: target.x * CELL_PX, top: target.y * CELL_PX, width: CELL_PX - 2, height: CELL_PX - 2 }}
+          />
+        )}
         {state.entities.map((e) => (
           <div
             key={e.id}
@@ -303,14 +392,7 @@ export const DslRunner = ({ difficulty, seed, config, onComplete }: MiniGameProp
           />
         ))}
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-1 text-2xl select-none">
-        <span />
-        <button onClick={() => setInputDir('up')} className="p-2 bg-surface-light rounded">↑</button>
-        <span />
-        <button onClick={() => setInputDir('left')} className="p-2 bg-surface-light rounded">←</button>
-        <button onClick={() => setInputDir('down')} className="p-2 bg-surface-light rounded">↓</button>
-        <button onClick={() => setInputDir('right')} className="p-2 bg-surface-light rounded">→</button>
-      </div>
+      <p className="text-xs text-text-dim mt-2">Tap a square to move there · swipe to step · arrows/WASD also work</p>
       <p className="text-xs text-text-dim mt-2">
         {game.winCondition === 'collect_all_tokens' && 'Collect every token'}
         {game.winCondition === 'reach_goal' && 'Reach the blue goal'}
