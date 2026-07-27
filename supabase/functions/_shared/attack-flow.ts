@@ -3,7 +3,7 @@
 // booting Deno.serve or the Supabase client.
 
 import { calculateAttackFee, calculateLoot } from './economy.ts';
-import { ECONOMY, MODULE_CONFIG, ALL_MODULE_TYPES } from './constants.ts';
+import { ECONOMY, MODULE_CONFIG } from './constants.ts';
 import { newSeed, createRng } from './rng.ts';
 import { VERIFIABLE_LOCK_TYPES } from './lock-solutions.ts';
 import { ACTIVE_MODULE_TYPES } from './roster.ts';
