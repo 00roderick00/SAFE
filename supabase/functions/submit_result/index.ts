@@ -150,6 +150,55 @@ serve(async (req) => {
   const { potentialLoot, attackerReceives, platformReceives, defenderLoses } =
     computeLootSplit(defenderBalance);
 
+  // ------- Version-skew void (never charge for our deploy skew) ----
+  // The attack contains a lock this client build cannot render, so the
+  // player was shown an error instead of a game. Void the attack and
+  // REFUND the stake. This is not exploitable: loot is 0 and no
+  // defender balance moves, so forcing a void gains an attacker nothing
+  // — it is strictly worse for them than a real win and identical to
+  // never having attacked. The decision uses the SERVER's own loadout
+  // snapshot, not a client claim, so it cannot be triggered on demand.
+  if (verified.unsupportedCount > 0) {
+    const refundLedger: LedgerEntry[] = [
+      { user_id: userId, delta: attack.stake, reason: 'attack_void_refund', ref_type: 'attack', ref_id: attack.id },
+    ];
+    const { data: voidBalance, error: voidErr } = await supabase.rpc('settle_attack', {
+      p_attack_id: attack.id,
+      p_status: 'abandoned',
+      p_loot: 0,
+      p_platform_fee: 0,
+      p_result_rows: resultRows,
+      p_ledger: refundLedger,
+      p_play_game_ids: [],
+      p_insurance_policy_id: null,
+      p_insurance_new_claims: null,
+    });
+    if (voidErr) {
+      if (voidErr.message?.includes('attack_not_pending')) {
+        const { data: fresh } = await supabase.from('attacks').select('*').eq('id', attack.id).maybeSingle();
+        if (fresh) return await resolvedPayload(supabase, fresh, userId);
+      }
+      return errorResponse('settlement_failed', 500, { detail: voidErr.message });
+    }
+    return jsonResponse({
+      attackId: attack.id,
+      status: 'voided',
+      loot: 0,
+      platformFee: 0,
+      stake: attack.stake,
+      stakeRefunded: attack.stake,
+      newBalance: voidBalance ?? null,
+      modules: verified.rows.map((r) => ({ moduleIndex: r.module_index, score: r.score, passed: r.passed })),
+      verification: {
+        verifiableCount: verified.verifiableCount,
+        forcedLoss: false,
+        voided: true,
+        unsupportedTypes: verified.unsupportedTypes,
+      },
+      idempotent: false,
+    });
+  }
+
   const clientWon = verified.allPassed && verified.submittedCount === expectedModules;
   // Composition guarantee: a safe with NO server-verifiable lock cannot
   // be breached — a "win" against it would rest entirely on forgeable,

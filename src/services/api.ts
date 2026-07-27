@@ -3,6 +3,7 @@
 // the Edge Functions are the source of truth.
 
 import { supabase } from './supabaseClient';
+import { clientSupportedModuleTypes } from '../components/minigames/registry';
 import type {
   ModuleType,
   SecurityLoadout,
@@ -37,10 +38,14 @@ export interface AttackStartPayload {
 
 export interface SubmitResultPayload {
   attackId: string;
-  status: 'won' | 'lost';
+  /** 'voided' = the attack contained a lock this build can't render
+   *  (version skew); the stake is refunded and no loot moves. */
+  status: 'won' | 'lost' | 'voided';
   loot: number;
   platformFee: number;
   stake: number;
+  /** Present on a voided attack: tokens returned to the attacker. */
+  stakeRefunded?: number;
   newBalance: number | null;
   modules: { moduleIndex: number; score: number; passed: boolean }[];
 }
@@ -154,7 +159,14 @@ async function callFunction<T>(name: string, body: unknown): Promise<T> {
 
 export const api = {
   async startAttack(input: { defenderSafeId?: string; botDifficulty?: number }): Promise<AttackStartPayload> {
-    return callFunction<AttackStartPayload>('start_attack', input);
+    // Declare what THIS build can actually render. start_attack refuses
+    // (pre-stake) to deal a loadout containing anything we'd have to
+    // show an error for, so a stale frontend can never be charged for
+    // an unplayable lock. See PROGRESS-TACTILE.md §7.
+    return callFunction<AttackStartPayload>('start_attack', {
+      ...input,
+      supportedModuleTypes: clientSupportedModuleTypes(),
+    });
   },
 
   async submitResult(input: {

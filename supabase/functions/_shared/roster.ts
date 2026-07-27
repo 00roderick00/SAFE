@@ -42,6 +42,40 @@ export function isRetiredModuleType(type: string): boolean {
   return RETIRED_SET.has(type);
 }
 
+/** Client-render contract: every module type the shipped client can
+ *  render (each has a MINIGAME_REGISTRY entry — enforced by
+ *  rosterContract.test.ts, which fails CI if a type is added to
+ *  MODULE_CONFIG without a client component). The server must NEVER
+ *  deal a lock outside this list: start_attack refuses (pre-stake)
+ *  any target whose loadout the requesting client says it can't
+ *  render. This is the guard against the 2026-07-27 version-skew
+ *  incident where redeployed functions dealt `chesspuzzle` to
+ *  frontends that predated the component and players forfeited
+ *  stakes on "Unknown module". */
+export const SUPPORTED_MODULE_TYPES: ModuleType[] = [...ALL_MODULE_TYPES];
+
+/** Renderable module type for support checks: DSL games render through
+ *  the fixed interpreter (no per-type component), everything else —
+ *  including engine_config customs — renders via its (base) engine. */
+export function renderableType(module: { type: string; customConfig?: { baseEngine?: string; mode?: string } }): string | null {
+  if (module.customConfig?.mode === 'dsl_program') return null;
+  return module.customConfig?.baseEngine ?? module.type;
+}
+
+/** Module types in `loadout` that `supported` cannot render. */
+export function unsupportedTypesIn(
+  loadout: { modules: { type: string; customConfig?: { baseEngine?: string; mode?: string } }[] },
+  supported: readonly string[],
+): string[] {
+  const set = new Set(supported);
+  const out = new Set<string>();
+  for (const m of loadout.modules) {
+    const t = renderableType(m);
+    if (t !== null && !set.has(t)) out.add(t);
+  }
+  return [...out];
+}
+
 /** Equippable roster: everything not retired. */
 export const ACTIVE_MODULE_TYPES: ModuleType[] = ALL_MODULE_TYPES.filter(
   (t) => !RETIRED_SET.has(t),

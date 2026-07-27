@@ -32,8 +32,11 @@ import {
   verifyLockAnswer,
 } from './lock-solutions.ts';
 import { verifyChessAnswer } from './chess-puzzle.ts';
+import { SUPPORTED_MODULE_TYPES, renderableType } from './roster.ts';
 
-export type VerificationMethod = 'replay' | 'answer' | 'plausibility' | 'missing';
+const SUPPORTED = new Set<string>(SUPPORTED_MODULE_TYPES);
+
+export type VerificationMethod = 'replay' | 'answer' | 'plausibility' | 'missing' | 'unsupported';
 
 export interface SubmittedResultV {
   moduleType: string;
@@ -61,7 +64,19 @@ export interface VerifiedRow {
 }
 
 export type VerifyResult =
-  | { ok: true; rows: VerifiedRow[]; allPassed: boolean; submittedCount: number; verifiableCount: number }
+  | {
+      ok: true;
+      rows: VerifiedRow[];
+      allPassed: boolean;
+      submittedCount: number;
+      verifiableCount: number;
+      /** Modules whose type the shipped client cannot render (server /
+       *  client version skew). Non-zero means the attack must be VOIDED
+       *  and the stake refunded — the player could not have played it.
+       *  See submit_result and PROGRESS-TACTILE.md §7. */
+      unsupportedCount: number;
+      unsupportedTypes: string[];
+    }
   | { ok: false; error: string; at: number; reason?: string };
 
 const MAX_TIME_MS = 180_000;
@@ -92,12 +107,36 @@ export function verifyAttack(
 ): VerifyResult {
   const expected = loadout.modules.length;
   const rows: VerifiedRow[] = [];
+  const unsupported: string[] = [];
   let allPassed = expected > 0;
   let submittedCount = 0;
 
   for (let i = 0; i < expected; i++) {
     const mod = loadout.modules[i];
     const seed = moduleSeeds[i];
+
+    // --- Unrenderable module (version skew) -------------------------
+    // The server dealt a lock this client build has no component for,
+    // so the player was shown an error instead of a game. Record it as
+    // NOT passed (it must never be a free pass toward a breach) and
+    // report it so submit_result can void the attack and refund the
+    // stake instead of charging the player for our deploy skew.
+    const rType = renderableType(mod);
+    if (rType !== null && !SUPPORTED.has(rType)) {
+      rows.push({
+        attack_id: attackId,
+        module_index: i,
+        module_type: mod.type,
+        score: 0,
+        passed: false,
+        time_spent_ms: 0,
+        method: 'unsupported',
+        reason: 'unsupported_module_type',
+      });
+      unsupported.push(rType);
+      allPassed = false;
+      continue;
+    }
 
     if (i >= submitted.length) {
       // No result for this module → failed (early exit / abandon).
@@ -209,5 +248,13 @@ export function verifyAttack(
   }
 
   if (expected === 0) allPassed = false;
-  return { ok: true, rows, allPassed, submittedCount, verifiableCount: countVerifiableModules(loadout) };
+  return {
+    ok: true,
+    rows,
+    allPassed,
+    submittedCount,
+    verifiableCount: countVerifiableModules(loadout),
+    unsupportedCount: unsupported.length,
+    unsupportedTypes: [...new Set(unsupported)],
+  };
 }

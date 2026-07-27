@@ -65,6 +65,15 @@ export function getMiniGameComponent(type: ModuleType): LazyGame | null {
   return MINIGAME_REGISTRY[type] ?? null;
 }
 
+/** Every module type THIS build can render, i.e. the registry keys.
+ *  Sent with start_attack so the server never deals a lock we'd have to
+ *  show "Unknown module" for (version-skew guard, PROGRESS-TACTILE §7),
+ *  and asserted against the server's dealable roster in
+ *  rosterContract.test.ts so the two can't drift apart unnoticed. */
+export function clientSupportedModuleTypes(): ModuleType[] {
+  return Object.keys(MINIGAME_REGISTRY) as ModuleType[];
+}
+
 /** Fire-and-forget warmup of the lazy chunks for the given module types. */
 export function preloadMiniGames(types: (ModuleType | string)[]): void {
   for (const type of types) {

@@ -36,6 +36,7 @@ import { ECONOMY } from '../_shared/constants.ts';
 import { newSeed } from '../_shared/rng.ts';
 import { generateBotTarget, parseBotId } from '../_shared/bot-target.ts';
 import type { SecurityLoadout } from '../_shared/types.ts';
+import { SUPPORTED_MODULE_TYPES, unsupportedTypesIn } from '../_shared/roster.ts';
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -46,7 +47,7 @@ serve(async (req) => {
   const userId = await getUserId(req);
   if (!userId) return errorResponse('unauthorized', 401);
 
-  let body: { defenderSafeId?: string; botDifficulty?: number } = {};
+  let body: { defenderSafeId?: string; botDifficulty?: number; supportedModuleTypes?: string[] } = {};
   try {
     body = await req.json();
   } catch {
@@ -140,6 +141,25 @@ serve(async (req) => {
       balance: bot.balance,
       difficulty: bot.difficulty,
     };
+  }
+
+  // ------- Renderability guard (PRE-STAKE) ------------------------
+  // Never deal a lock the attacking client cannot render. Checked
+  // against BOTH the server's shipped contract and the client's own
+  // declared registry (so a stale frontend is caught even when the
+  // server contract has moved ahead). Refusing here means no attack
+  // row and NO stake debit — the 2026-07-27 skew incident charged
+  // players for locks they were never shown. This gates nothing
+  // security-relevant: it only declines to start an unplayable attack.
+  const clientSupported = Array.isArray(body.supportedModuleTypes) && body.supportedModuleTypes.length > 0
+    ? body.supportedModuleTypes.filter((t): t is string => typeof t === 'string')
+    : null;
+  const renderable = clientSupported
+    ? SUPPORTED_MODULE_TYPES.filter((t) => clientSupported.includes(t))
+    : SUPPORTED_MODULE_TYPES;
+  const unrenderable = unsupportedTypesIn(defenderLoadout, renderable);
+  if (unrenderable.length > 0) {
+    return errorResponse('unsupported_module_types', 409, { types: unrenderable });
   }
 
   // Compute stake using shared economy.

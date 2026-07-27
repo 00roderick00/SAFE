@@ -28,6 +28,9 @@ interface SettlementView {
   netLoot: number;
   /** Run was abandoned mid-attack rather than played to a loss. */
   abandoned?: boolean;
+  /** Attack voided (unrenderable lock, version skew): stake refunded,
+   *  nothing lost, nothing won. */
+  voided?: boolean;
 }
 
 const seenBriefings = new Set<ModuleType>();
@@ -136,7 +139,20 @@ export const AttackScreen = () => {
         if (!payload) throw new Error('No settlement returned.');
         await rehydrateBalance(payload.newBalance);
         const success = payload.status === 'won';
+        const voided = payload.status === 'voided';
         const netLoot = success ? payload.loot - payload.platformFee : 0;
+        if (voided) {
+          // Our deploy skew, not the player's failure: stake refunded,
+          // no history row, no MMR change, no loss notification.
+          addNotification({
+            type: 'attack_fail',
+            title: 'Raid voided',
+            message: `A lock couldn’t load, so your ${payload.stake} token stake was returned. Reload to update.`,
+          });
+          setSettlement({ success: false, stake: payload.stake, grossLoot: 0, platformFee: 0, netLoot: 0, voided: true });
+          setPhase('outcome');
+          return;
+        }
         // Record the settled server attack in History (both sides log to
         // the same activity list). UX-FINDINGS P1.1.
         addAttackResult(
@@ -187,6 +203,20 @@ export const AttackScreen = () => {
     setSettlement({ success: result.success, stake: result.stakePaid, grossLoot: result.success ? result.lootGained + result.platformFee : 0, platformFee: result.platformFee, netLoot: result.lootGained, abandoned: abandoned && !result.success });
     setPhase('outcome');
   }, [isServerAttack, serverAttack, completeServerAttack, rehydrateBalance, recordSuccessfulHeist, updateRiskRating, addNotification, targetName, stakePaid, completeAttack, addAttackResult, updateBotCooldown, addEarnings]);
+
+  /** Version skew: no component exists for this lock. Never score it as
+   *  a failed lock (that would burn the stake for our bug). Settle with
+   *  NO result recorded for the module — the server sees an unsupported
+   *  module in its own loadout snapshot, voids the attack and refunds.
+   *  For a local (offline) attack there is no stake at risk to refund. */
+  const handleUnsupportedModule = useCallback(() => {
+    if (isServerAttack) {
+      void settleAttack();
+      return;
+    }
+    setSettlement({ success: false, stake: 0, grossLoot: 0, platformFee: 0, netLoot: 0, voided: true });
+    setPhase('outcome');
+  }, [isServerAttack, settleAttack]);
 
   const handleModuleComplete = useCallback((result: MiniGameResult) => {
     recordModuleResult(result);
@@ -322,6 +352,7 @@ export const AttackScreen = () => {
                   mode={currentModule.customConfig?.mode}
                   onComplete={handleModuleComplete}
                   onFail={handleModuleComplete}
+                  onUnsupported={handleUnsupportedModule}
                 />
               </div>
             </motion.section>
@@ -346,7 +377,7 @@ export const AttackScreen = () => {
 
           {phase === 'outcome' && settlement && (
             <motion.section key="outcome" className="outcome-panel" initial={{ opacity: 0, scale: .96 }} animate={{ opacity: 1, scale: 1 }}>
-              <VaultOutcome success={settlement.success} target={targetName} stake={settlement.stake} grossLoot={settlement.grossLoot} platformFee={settlement.platformFee} netLoot={settlement.netLoot} abandoned={settlement.abandoned} />
+              <VaultOutcome success={settlement.success} target={targetName} stake={settlement.stake} grossLoot={settlement.grossLoot} platformFee={settlement.platformFee} netLoot={settlement.netLoot} abandoned={settlement.abandoned} voided={settlement.voided} />
               <button className={settlement.success ? 'btn-neon outcome-continue' : 'btn-danger outcome-continue'} onClick={leaveOutcome}>{settlement.success ? 'Find another target' : settlement.abandoned ? 'Leave heist' : 'Find another target'}</button>
             </motion.section>
           )}

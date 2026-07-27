@@ -19,6 +19,10 @@ interface Props {
   mode?: 'engine_config' | 'dsl_program';
   onComplete: (result: MiniGameResult) => void;
   onFail: (result: MiniGameResult) => void;
+  /** Raised when no component exists for `moduleType` (server/client
+   *  version skew). The attack is voided and the stake refunded — this
+   *  is never scored as a failed lock. */
+  onUnsupported?: (info: { moduleId: string; moduleType: ModuleType }) => void;
 }
 
 /**
@@ -37,6 +41,7 @@ export const MiniGameHost = ({
   mode,
   onComplete,
   onFail,
+  onUnsupported,
 }: Props) => {
   // Phase 3B: DSL games render through a fixed interpreter, not
   // through one of the built-in engine components.
@@ -51,27 +56,27 @@ export const MiniGameHost = ({
   const Component = getMiniGameComponent(moduleType);
 
   if (!Component) {
+    // Version skew: the server dealt a lock this build has no component
+    // for. This is OUR bug, not the player's — so it must never be
+    // scored as a failed lock (which, under all-or-nothing, would burn
+    // their whole stake). The attack is voided and the stake refunded
+    // server-side; submit_result reaches the same verdict from its own
+    // loadout snapshot, so a forged client can't turn this into a free
+    // breach — a void pays zero loot. See PROGRESS-TACTILE.md §7.
     return (
       <div className="text-center py-8">
         <AlertTriangle size={56} className="text-warning mx-auto mb-4" />
-        <p className="font-display text-lg font-bold text-warning mb-2">Unknown module</p>
+        <p className="font-display text-lg font-bold text-warning mb-2">This lock couldn’t load</p>
         <p className="text-sm text-text-dim mb-4">
-          No minigame is registered for type
-          <span className="text-text"> {moduleType}</span>. Counting as a failed lock.
+          Your app is out of date for lock type
+          <span className="text-text"> {moduleType}</span>. The raid is void and your stake is
+          returned — nothing is lost. Reload to get the latest version.
         </p>
         <button
-          onClick={() =>
-            onComplete({
-              moduleId,
-              moduleType,
-              score: 0,
-              passed: false,
-              timeSpent: 0,
-            })
-          }
+          onClick={() => onUnsupported?.({ moduleId, moduleType })}
           className="px-4 py-2 rounded-lg bg-primary text-background text-sm font-medium"
         >
-          Continue
+          End raid &amp; refund stake
         </button>
       </div>
     );

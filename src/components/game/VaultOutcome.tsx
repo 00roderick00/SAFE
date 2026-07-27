@@ -10,6 +10,7 @@ export const VaultOutcome = ({
   platformFee,
   netLoot,
   abandoned = false,
+  voided = false,
 }: {
   success: boolean;
   target: string;
@@ -20,6 +21,10 @@ export const VaultOutcome = ({
   /** True when the run was abandoned mid-attack rather than played out;
    *  changes the loss copy so the forfeited stake is explained. */
   abandoned?: boolean;
+  /** True when the raid was voided because a lock couldn't be rendered
+   *  (server/client version skew): the stake is REFUNDED, so the copy
+   *  must not read as a loss. */
+  voided?: boolean;
 }) => {
   const reducedMotion = useReducedMotion();
   return (
@@ -56,11 +61,13 @@ export const VaultOutcome = ({
         )}
         {success ? <DoorOpen className="outcome-vault__mark" /> : <LockKeyhole className="outcome-vault__mark" />}
       </div>
-      <StateBadge state={success ? 'breached' : 'failed'} label={success ? 'Full breach' : abandoned ? 'Attack abandoned' : 'Vault sealed'} />
-      <h2>{success ? `You won ${Math.round(netLoot).toLocaleString()} TK` : `You lost ${Math.round(stake).toLocaleString()} TK`}</h2>
-      <p className="outcome-subhead">{success ? `You cracked all three locks on ${target}.` : abandoned ? 'You backed out after committing the stake.' : `A lock on ${target} held.`}</p>
+      <StateBadge state={success ? 'breached' : 'failed'} label={success ? 'Full breach' : voided ? 'Raid voided' : abandoned ? 'Attack abandoned' : 'Vault sealed'} />
+      <h2>{success ? `You won ${Math.round(netLoot).toLocaleString()} TK` : voided ? 'Nothing lost' : `You lost ${Math.round(stake).toLocaleString()} TK`}</h2>
+      <p className="outcome-subhead">{success ? `You cracked all three locks on ${target}.` : voided ? 'A lock could not load, so this raid does not count. Your stake was returned.' : abandoned ? 'You backed out after committing the stake.' : `A lock on ${target} held.`}</p>
       {success ? (
         <div className="outcome-reward"><Coins size={24} /><span>NET LOOT RECEIVED</span><strong>+{Math.round(netLoot).toLocaleString()} TK</strong></div>
+      ) : voided ? (
+        <div className="outcome-reward"><Coins size={24} /><span>STAKE RETURNED</span><strong>+{Math.round(stake).toLocaleString()} TK</strong><small>Update your app to raid this target.</small></div>
       ) : (
         <div className="outcome-loss"><AlertTriangle size={24} /><span>{abandoned ? 'STAKE FORFEITED' : 'STAKE DEDUCTED'}</span><strong>-{Math.round(stake).toLocaleString()} TK</strong><small>{abandoned ? 'You backed out — the committed stake is forfeited.' : 'One lock held. Every lock is required for a payout.'}</small></div>
       )}
