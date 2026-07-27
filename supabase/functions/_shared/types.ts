@@ -42,7 +42,8 @@ export type PuzzleGameType =
   | 'spotdiff'
   | 'reaction'
   | 'numsequence'
-  | 'cipher';
+  | 'cipher'
+  | 'chesspuzzle';
 
 export type ModuleType = ClassicLockType | ArcadeGameType | PuzzleGameType | 'custom';
 

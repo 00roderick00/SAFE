@@ -470,6 +470,16 @@ export const MODULE_CONFIG = {
     duration: 30,
     passThreshold: 0.5,
   },
+  chesspuzzle: {
+    name: 'Checkmate',
+    description: 'Find the forced mate',
+    icon: '♞',
+    category: 'puzzle',
+    baseWeight: 1.3,
+    hardnessConstant: 2.5,
+    duration: 60,
+    passThreshold: 0.5,
+  },
 
   // Custom placeholder
   custom: {

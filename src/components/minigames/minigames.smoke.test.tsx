@@ -31,9 +31,9 @@ const registeredTypes = Object.keys(MINIGAME_REGISTRY) as ModuleType[];
 
 describe('MINIGAME_REGISTRY', () => {
   it('has an entry for every non-custom module type', () => {
-    // 36 game modules; custom is intentionally not in the registry
-    // (it renders through the AI builder in Phase 3).
-    expect(registeredTypes.length).toBe(36);
+    // 36 original game modules + chesspuzzle; custom is intentionally
+    // not in the registry (it renders through the AI builder in Phase 3).
+    expect(registeredTypes.length).toBe(37);
   });
 });
 

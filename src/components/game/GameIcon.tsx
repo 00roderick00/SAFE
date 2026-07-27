@@ -32,6 +32,7 @@ import {
   Waypoints,
   WholeWord,
   Zap,
+  Crown,
 } from 'lucide-react';
 import type { ModuleType } from '../../types';
 
@@ -72,6 +73,7 @@ const ICONS: Partial<Record<ModuleType, ComponentType<{ size?: number; strokeWid
   reaction: Zap,
   numsequence: Code2,
   cipher: KeyRound,
+  chesspuzzle: Crown,
   custom: Sparkles,
 };
 

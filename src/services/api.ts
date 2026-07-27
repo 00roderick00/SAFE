@@ -169,7 +169,7 @@ export const api = {
       inputTrace?: ('up' | 'down' | 'left' | 'right' | 'idle')[];
       /** Seed-answer locks: the player's actual answer (digits string or
        *  int array), server-verified against the seed-derived secret. */
-      answer?: string | number[];
+      answer?: string | number[] | string[];
     }[];
   }): Promise<SubmitResultPayload> {
     return callFunction<SubmitResultPayload>('submit_result', input);

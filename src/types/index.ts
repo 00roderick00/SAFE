@@ -43,7 +43,8 @@ export type PuzzleGameType =
   | 'spotdiff'
   | 'reaction'
   | 'numsequence'
-  | 'cipher';
+  | 'cipher'
+  | 'chesspuzzle';
 
 export type ModuleType = ClassicLockType | ArcadeGameType | PuzzleGameType | 'custom';
 
@@ -220,10 +221,11 @@ export interface MiniGameResult {
    *  non-DSL games. */
   inputTrace?: ('up' | 'down' | 'left' | 'right' | 'idle')[];
   /** Player's actual answer for a seed-answer lock (keypad/colorcode/
-   *  combination): a digit string or an array of ints. The server
-   *  recomputes the seed-derived secret and compares — client
-   *  passed/score is not trusted for these. */
-  answer?: string | number[];
+   *  combination: digit string or int array) or a chess puzzle (array
+   *  of UCI moves). The server recomputes the seed-derived secret /
+   *  replays the moves and compares — client passed/score is not
+   *  trusted for these. */
+  answer?: string | number[] | string[];
 }
 
 // Insurance plan options

@@ -95,9 +95,13 @@ export function verifyLockAnswer(
 }
 
 /** True when a single module can be independently verified server-side
- *  (a seed-answer lock or a replayable DSL custom game). */
+ *  (a seed-answer lock, a chess puzzle, or a replayable DSL custom
+ *  game). Chess puzzles are class 1a: the position is derived from
+ *  (seed, difficulty) and the server replays the submitted mating line
+ *  against a deterministic defense (see chess-puzzle.ts). */
 export function isVerifiableModule(module: { type: string; customConfig?: { mode?: string } }): boolean {
   if (module.customConfig?.mode === 'dsl_program') return true;
+  if (module.type === 'chesspuzzle') return true;
   return isVerifiableLockType(module.type);
 }
 

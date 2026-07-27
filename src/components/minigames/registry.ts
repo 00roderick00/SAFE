@@ -46,6 +46,7 @@ const GAME_LOADERS: Partial<Record<ModuleType, { loader: GameLoader; exportName:
   reaction: { loader: () => import('./ReactionGame'), exportName: 'ReactionGame' },
   numsequence: { loader: () => import('./NumSequenceGame'), exportName: 'NumSequenceGame' },
   cipher: { loader: () => import('./CipherGame'), exportName: 'CipherGame' },
+  chesspuzzle: { loader: () => import('./ChessPuzzleGame'), exportName: 'ChessPuzzleGame' },
 };
 
 const lazyGame = ({ loader, exportName }: { loader: GameLoader; exportName: string }): LazyGame => lazy(async () => {

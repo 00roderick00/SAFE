@@ -6,7 +6,7 @@ export type SkillTag = 'Reflex' | 'Memory' | 'Logic' | 'Precision' | 'Strategy';
 
 const MEMORY = new Set<ModuleType>(['pattern', 'sequence', 'colorcode', 'memorymatch', 'numsequence', 'morse']);
 const REFLEX = new Set<ModuleType>(['timing', 'reaction', 'pacman', 'spaceinvaders', 'frogger', 'donkeykong', 'centipede', 'asteroids', 'snake', 'breakout', 'tetris', 'galaga', 'digdug', 'qbert']);
-const LOGIC = new Set<ModuleType>(['quickmath', 'sudoku', 'logic', 'cipher', 'wordsearch', 'wordscramble', 'jigsaw', 'maze', 'spotdiff']);
+const LOGIC = new Set<ModuleType>(['quickmath', 'sudoku', 'logic', 'cipher', 'wordsearch', 'wordscramble', 'jigsaw', 'maze', 'spotdiff', 'chesspuzzle']);
 const PRECISION = new Set<ModuleType>(['pattern', 'timing', 'combination', 'slider', 'rotation', 'wire', 'fingerprint', 'safedial']);
 
 export interface CatalogMeta {
@@ -28,6 +28,7 @@ export const FEATURED_GAMES = new Set<ModuleType>([
   'cipher',   // Logic decoding
   'tetris',   // Stack Breach — stack-based arcade reference quality
   'reaction', // original reflex game
+  'chesspuzzle', // Checkmate — tactile tap-tap, forced-mate skill, server-verified
 ]);
 
 export type GameStatus = 'featured' | 'experimental';
@@ -51,7 +52,7 @@ export type GameMotif = 'dial' | 'grid' | 'stack' | 'burst' | 'path';
 const MOTIF_DIAL = new Set<ModuleType>(['timing', 'safedial', 'rotation', 'reaction', 'morse', 'slider']);
 const MOTIF_STACK = new Set<ModuleType>(['tetris', 'breakout', 'donkeykong', 'jigsaw']);
 const MOTIF_BURST = new Set<ModuleType>(['spaceinvaders', 'asteroids', 'galaga']);
-const MOTIF_GRID = new Set<ModuleType>(['maze', 'snake', 'pacman', 'frogger', 'digdug', 'qbert', 'centipede', 'sudoku', 'wordsearch', 'spotdiff', 'memorymatch']);
+const MOTIF_GRID = new Set<ModuleType>(['maze', 'snake', 'pacman', 'frogger', 'digdug', 'qbert', 'centipede', 'sudoku', 'wordsearch', 'spotdiff', 'memorymatch', 'chesspuzzle']);
 
 /** Mechanic family a game's animated thumbnail should depict. Anything not
  *  in an explicit set (wires, patterns, ciphers, sequences…) reads as a

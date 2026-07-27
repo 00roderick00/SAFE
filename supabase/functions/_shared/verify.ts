@@ -31,6 +31,7 @@ import {
   isVerifiableLockType,
   verifyLockAnswer,
 } from './lock-solutions.ts';
+import { verifyChessAnswer } from './chess-puzzle.ts';
 
 export type VerificationMethod = 'replay' | 'answer' | 'plausibility' | 'missing';
 
@@ -141,6 +142,29 @@ export function verifyAttack(
         time_spent_ms: clampTime(r.timeSpent),
         method: 'replay',
         reason,
+      });
+      submittedCount++;
+      if (!passed) allPassed = false;
+      continue;
+    }
+
+    // --- Chess puzzle: replay the submitted mating line ------------
+    // Class 1a: the position derives from (seed, difficulty); the
+    // server replays the player's white moves against the deterministic
+    // best defense and passes iff mate lands within the move budget.
+    if (mod.type === 'chesspuzzle') {
+      const difficulty = seed?.difficulty ?? mod.difficulty;
+      const seedStr = seed?.seed ?? '';
+      const passed = verifyChessAnswer(seedStr, difficulty, r.answer);
+      rows.push({
+        attack_id: attackId,
+        module_index: i,
+        module_type: mod.type,
+        score: passed ? 1 : 0,
+        passed,
+        time_spent_ms: clampTime(r.timeSpent),
+        method: 'answer',
+        reason: passed ? undefined : (r.answer === undefined ? 'no_answer' : 'answer_mismatch'),
       });
       submittedCount++;
       if (!passed) allPassed = false;

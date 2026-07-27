@@ -14,9 +14,10 @@ describe('defense catalog metadata', () => {
 });
 
 describe('featured / experimental roster (Section 4/6)', () => {
-  it('curates a 6-8 game launch roster spanning skills', () => {
+  it('curates a 6-9 game launch roster spanning skills', () => {
     expect(FEATURED_GAMES.size).toBeGreaterThanOrEqual(6);
-    expect(FEATURED_GAMES.size).toBeLessThanOrEqual(8);
+    // 9th slot added for chesspuzzle (tactile redesign §2).
+    expect(FEATURED_GAMES.size).toBeLessThanOrEqual(9);
   });
 
   it('marks reference-quality games as Featured', () => {
