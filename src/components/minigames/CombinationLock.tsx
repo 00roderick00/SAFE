@@ -18,11 +18,19 @@ export const CombinationLock = ({ difficulty, seed, onComplete }: CombinationLoc
   const [enteredCode, setEnteredCode] = useState<number[]>([]);
   const [attempts, setAttempts] = useState(0);
   const [gameOver, setGameOver] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(45);
+  // Per-position higher/lower feedback from the last wrong attempt makes
+  // the code solvable by binary search (skill, not blind guessing).
+  const [lastAttempt, setLastAttempt] = useState<{
+    guess: number[];
+    feedback: ('higher' | 'lower' | 'correct')[];
+  } | null>(null);
   const startTime = useRef<number>(0);
   useEffect(() => { startTime.current = Date.now(); }, []);
 
-  const maxAttempts = Math.max(2, 5 - Math.floor(difficulty * 2));
+  // Binary search over a 0-9 digit needs at most 4 tries per digit-set;
+  // 5+ attempts and 45s guarantee a perfect search always fits.
+  const maxAttempts = Math.max(5, 8 - Math.floor(difficulty * 3));
 
   const handleGameEnd = useCallback((success: boolean, answer: number[] = []) => {
     if (gameOver) return;
@@ -76,6 +84,12 @@ export const CombinationLock = ({ difficulty, seed, onComplete }: CombinationLoc
       if (isCorrect) {
         handleGameEnd(true, newEntered);
       } else {
+        setLastAttempt({
+          guess: newEntered,
+          feedback: newEntered.map((n, i) =>
+            n === code[i] ? 'correct' : code[i] > n ? 'higher' : 'lower'
+          ),
+        });
         setAttempts((a) => {
           const newAttempts = a + 1;
           if (newAttempts >= maxAttempts) {
@@ -115,6 +129,34 @@ export const CombinationLock = ({ difficulty, seed, onComplete }: CombinationLoc
           </div>
         ))}
       </div>
+
+      {/* Higher/lower feedback from the last wrong attempt */}
+      {lastAttempt && !gameOver && (
+        <div className="flex flex-col items-center mb-4" data-testid="combo-feedback">
+          <div className="flex gap-2">
+            {lastAttempt.guess.map((g, i) => (
+              <div key={i} className="w-10 flex flex-col items-center">
+                <span className="text-sm font-mono text-text-dim">{g}</span>
+                <span
+                  data-testid={`combo-fb-${i}`}
+                  className={`text-sm font-bold ${
+                    lastAttempt.feedback[i] === 'correct' ? 'text-primary' : 'text-warning'
+                  }`}
+                >
+                  {lastAttempt.feedback[i] === 'correct'
+                    ? '✓'
+                    : lastAttempt.feedback[i] === 'higher'
+                      ? '▲'
+                      : '▼'}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-text-dim mt-1">
+            Last try: ▲ digit is higher · ▼ digit is lower · ✓ correct
+          </p>
+        </div>
+      )}
 
       {/* Dial */}
       <div className="relative w-48 h-48 mb-4">
@@ -167,7 +209,7 @@ export const CombinationLock = ({ difficulty, seed, onComplete }: CombinationLoc
       </div>
 
       <p className="text-xs text-text-dim mt-4">
-        Set each digit, then press SET
+        Set each digit, then press SET. After a wrong code, ▲/▼ show whether each digit is higher or lower — home in on the combo.
       </p>
 
       {gameOver && (

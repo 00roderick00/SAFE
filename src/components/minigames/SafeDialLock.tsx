@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { RotateCcw, RotateCw } from 'lucide-react';
 import type { MiniGameProps } from '../../types';
 import { gameAudio } from '../../utils/gameFeedback';
@@ -14,7 +15,7 @@ export const SafeDialLock = ({ difficulty, seed, onComplete }: MiniGameProps) =>
   const currentStepRef = useRef(0);
   const [dialPosition, setDialPosition] = useState(0);
   const [timeLeft, setTimeLeft] = useState(40);
-  const [status, setStatus] = useState('Turn in the shown direction and stop on the target number.');
+  const [status, setStatus] = useState('Drag the dial to spin it in the shown direction and stop on the target number.');
   const [statusTone, setStatusTone] = useState<'neutral' | 'warning' | 'success' | 'failure'>('neutral');
   const startTimeRef = useRef(0);
   const completedRef = useRef(false);
@@ -76,6 +77,43 @@ export const SafeDialLock = ({ difficulty, seed, onComplete }: MiniGameProps) =>
     });
   }, [code, finish]);
 
+  // Direct manipulation: drag around the dial face to spin it. The pointer
+  // angle is measured from the dial centre with atan2 (screen coordinates,
+  // so a positive delta is a clockwise sweep); every full notch of sweep
+  // feeds the same `rotate` step logic the buttons and arrow keys use.
+  const notchDegrees = 360 / dialNumbers;
+  const dragRef = useRef<{ pointerId: number; lastAngle: number; carry: number } | null>(null);
+
+  const pointerAngle = (element: HTMLElement, clientX: number, clientY: number) => {
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
+  };
+
+  const onDialPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (completedRef.current) return;
+    dragRef.current = { pointerId: event.pointerId, lastAngle: pointerAngle(event.currentTarget, event.clientX, event.clientY), carry: 0 };
+    try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch { /* pointer capture unavailable in some test environments */ }
+  };
+
+  const onDialPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const angle = pointerAngle(event.currentTarget, event.clientX, event.clientY);
+    let delta = angle - drag.lastAngle;
+    if (delta > 180) delta -= 360;
+    else if (delta < -180) delta += 360;
+    drag.lastAngle = angle;
+    drag.carry += delta;
+    while (drag.carry >= notchDegrees) { drag.carry -= notchDegrees; rotate('cw'); }
+    while (drag.carry <= -notchDegrees) { drag.carry += notchDegrees; rotate('ccw'); }
+  };
+
+  const onDialPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowLeft') { event.preventDefault(); rotate('ccw'); }
@@ -100,7 +138,16 @@ export const SafeDialLock = ({ difficulty, seed, onComplete }: MiniGameProps) =>
     >
       <div className="safe-dial-game">
         <div className="safe-dial-game__indicator" aria-hidden="true" />
-        <div className="safe-dial-game__wheel" style={{ transform: `rotate(${-dialPosition / dialNumbers * 360}deg)` }} role="img" aria-label={`Safe dial at ${dialPosition}; target ${currentTarget?.num ?? 'complete'}`}>
+        <div
+          className="safe-dial-game__wheel"
+          style={{ transform: `rotate(${-dialPosition / dialNumbers * 360}deg)`, touchAction: 'none', cursor: 'grab' }}
+          role="img"
+          aria-label={`Safe dial at ${dialPosition}; target ${currentTarget?.num ?? 'complete'}`}
+          onPointerDown={onDialPointerDown}
+          onPointerMove={onDialPointerMove}
+          onPointerUp={onDialPointerEnd}
+          onPointerCancel={onDialPointerEnd}
+        >
           {Array.from({ length: dialNumbers }, (_, number) => {
             const angle = number / dialNumbers * 360;
             return <i key={number} className={number % 5 === 0 ? 'major' : ''} style={{ transform: `rotate(${angle}deg)` }}>{number % 5 === 0 && <b style={{ transform: `rotate(${-angle + dialPosition / dialNumbers * 360}deg)` }}>{number}</b>}</i>;

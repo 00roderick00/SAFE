@@ -26,11 +26,18 @@ const BRICK_COLORS = [
   { fill: '#00d67a', glow: '#00d67a66' },
 ];
 
+const createInitialBricks = (): boolean[][] =>
+  Array.from({ length: BRICK_ROWS }, () => Array<boolean>(BRICK_COLS).fill(true));
+
 export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [paddleX, setPaddleX] = useState(CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2);
   const ballRef = useRef({ x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT - 40, dx: 3, dy: -3 });
-  const [bricks, setBricks] = useState<boolean[][]>([]);
+  // Simulation state lives in refs so the rAF loop effect is not torn
+  // down and rebuilt on every brick hit; `score` state exists only to
+  // drive the UI counter.
+  const bricksRef = useRef<boolean[][]>(createInitialBricks());
+  const scoreRef = useRef(0);
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [timeLeft, setTimeLeft] = useState(35);
@@ -47,18 +54,6 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
     paddleRef.current = paddleX;
   }, [paddleX]);
 
-  // Initialize bricks
-  useEffect(() => {
-    const initialBricks: boolean[][] = [];
-    for (let r = 0; r < BRICK_ROWS; r++) {
-      initialBricks[r] = [];
-      for (let c = 0; c < BRICK_COLS; c++) {
-        initialBricks[r][c] = true;
-      }
-    }
-    setBricks(initialBricks);
-  }, []);
-
   const handleGameEnd = useCallback((won: boolean = false) => {
     if (gameOver) return;
     setGameOver(true);
@@ -66,7 +61,7 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
       cancelAnimationFrame(animationRef.current);
     }
     const timeSpent = Date.now() - startTime.current;
-    const currentScore = score;
+    const currentScore = scoreRef.current;
     const scoreRatio = Math.min(1, currentScore / targetScore);
     onComplete({
       moduleId: 'breakout',
@@ -75,7 +70,7 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
       passed: won || currentScore >= targetScore,
       timeSpent,
     });
-  }, [gameOver, score, targetScore, onComplete]);
+  }, [gameOver, targetScore, onComplete]);
 
   // Timer
   useEffect(() => {
@@ -92,9 +87,11 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
     return () => clearInterval(timer);
   }, [gameOver, gameStarted, handleGameEnd]);
 
-  // Game loop
+  // Game loop — fixed-timestep accumulator. The simulation advances in
+  // 1000/60 ms steps of wall-clock time, so a 120Hz display runs the
+  // ball at the same real-world speed as a 60Hz one.
   useEffect(() => {
-    if (gameOver || bricks.length === 0 || !gameStarted) return;
+    if (gameOver || !gameStarted) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -102,13 +99,17 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
     if (!ctx) return;
 
     const ballSpeed = 3.5 + difficulty * 2;
-    let currentScore = score;
-    const currentBricks = bricks.map(row => [...row]);
+    const STEP_MS = 1000 / 60;
+    const MAX_FRAME_MS = 250; // cap catch-up after a backgrounded tab
+    let lastTime: number | null = null;
+    let accumulator = 0;
+    let ended = false;
 
-    const gameLoop = () => {
-      if (gameOver) return;
-
+    // One fixed simulation step (identical physics to the old
+    // once-per-frame update).
+    const stepSimulation = () => {
       const ball = ballRef.current;
+      const currentBricks = bricksRef.current;
 
       // Update ball position
       ball.x += ball.dx;
@@ -135,6 +136,7 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
 
       // Bottom - lose ball
       if (ball.y >= CANVAS_HEIGHT + BALL_RADIUS) {
+        ended = true;
         handleGameEnd();
         return;
       }
@@ -152,11 +154,11 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
                 ball.y - BALL_RADIUS < brickY + BRICK_HEIGHT) {
               currentBricks[r][c] = false;
               ball.dy = -ball.dy;
-              currentScore++;
-              setScore(currentScore);
-              setBricks(currentBricks.map(row => [...row]));
+              scoreRef.current += 1;
+              setScore(scoreRef.current);
 
-              if (currentScore >= targetScore) {
+              if (scoreRef.current >= targetScore) {
+                ended = true;
                 handleGameEnd(true);
                 return;
               }
@@ -164,8 +166,13 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
           }
         }
       }
+    };
 
-      // Draw
+    const draw = () => {
+      const ball = ballRef.current;
+      const paddle = paddleRef.current;
+      const currentBricks = bricksRef.current;
+
       ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
       // Draw background gradient
@@ -218,7 +225,22 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
       ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
+    };
 
+    const gameLoop = (timestamp: number) => {
+      if (ended) return;
+
+      if (lastTime === null) lastTime = timestamp;
+      accumulator += Math.max(0, Math.min(MAX_FRAME_MS, timestamp - lastTime));
+      lastTime = timestamp;
+
+      while (accumulator >= STEP_MS) {
+        accumulator -= STEP_MS;
+        stepSimulation();
+        if (ended) return;
+      }
+
+      draw();
       animationRef.current = requestAnimationFrame(gameLoop);
     };
 
@@ -229,7 +251,7 @@ export const BreakoutGame = ({ difficulty, onComplete }: BreakoutGameProps) => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [gameOver, bricks.length, gameStarted, difficulty, handleGameEnd, targetScore, score, bricks]);
+  }, [gameOver, gameStarted, difficulty, handleGameEnd, targetScore]);
 
   // Mouse/touch controls
   const handleMove = (clientX: number, rect: DOMRect) => {

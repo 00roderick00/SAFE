@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ChevronsDown, RotateCw } from 'lucide-react';
 import { createRng } from '@shared/rng.ts';
 import type { MiniGameProps } from '../../types';
@@ -18,7 +18,12 @@ const SHAPES = [
   [[1, 1, 0], [0, 1, 1]],
 ];
 
+const TAP_SLOP_PX = 10;
+const SWIPE_DROP_PX = 40;
+const FALLBACK_CELL_PX = 24;
+
 interface Piece { shape: number[][]; x: number; y: number; color: number; }
+interface DragState { pointerId: number; startX: number; startY: number; startPieceX: number; moved: boolean; }
 const emptyBoard = () => Array.from({ length: BOARD_HEIGHT }, () => Array<number>(BOARD_WIDTH).fill(0));
 const makePiece = (rng: () => number): Piece => {
   const color = Math.floor(rng() * SHAPES.length) + 1;
@@ -33,7 +38,7 @@ export const TetrisGame = ({ difficulty, seed, onComplete }: MiniGameProps) => {
   const [linesCleared, setLinesCleared] = useState(0);
   const linesRef = useRef(0);
   const [timeLeft, setTimeLeft] = useState(50);
-  const [status, setStatus] = useState('Build complete rows. Avoid stacking into the ceiling.');
+  const [status, setStatus] = useState('Drag on the board to steer, tap to rotate, swipe down to slam. Buttons below work too.');
   const [statusTone, setStatusTone] = useState<'neutral' | 'warning' | 'success' | 'failure'>('neutral');
   const startTimeRef = useRef(0);
   const completedRef = useRef(false);
@@ -127,6 +132,59 @@ export const TetrisGame = ({ difficulty, seed, onComplete }: MiniGameProps) => {
     haptics.selection();
   }, [board, piece, collision, lockPiece]);
 
+  const boardElRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+
+  const cellWidth = useCallback(() => {
+    const rect = boardElRef.current?.getBoundingClientRect();
+    return rect && rect.width > 0 ? rect.width / BOARD_WIDTH : FALLBACK_CELL_PX;
+  }, []);
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (completedRef.current) return;
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startPieceX: piece.x, moved: false };
+    if (typeof event.currentTarget.setPointerCapture === 'function') {
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* capture unsupported */ }
+    }
+  }, [piece.x]);
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || completedRef.current) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > TAP_SLOP_PX || Math.abs(deltaY) > TAP_SLOP_PX) drag.moved = true;
+    const targetX = drag.startPieceX + Math.round(deltaX / cellWidth());
+    if (targetX === piece.x) return;
+    const step = targetX > piece.x ? 1 : -1;
+    let next = piece;
+    while (next.x !== targetX) {
+      const candidate = { ...next, x: next.x + step };
+      if (collision(candidate, board)) break;
+      next = candidate;
+    }
+    if (next !== piece) {
+      setPiece(next);
+      haptics.selection();
+    }
+  }, [board, piece, collision, cellWidth]);
+
+  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (completedRef.current) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (deltaY > SWIPE_DROP_PX && Math.abs(deltaY) > Math.abs(deltaX)) {
+      move('drop');
+      return;
+    }
+    if (!drag.moved && Math.abs(deltaX) < TAP_SLOP_PX && Math.abs(deltaY) < TAP_SLOP_PX) move('rotate');
+  }, [move]);
+
+  const handlePointerCancel = useCallback(() => { dragRef.current = null; }, []);
+
   useEffect(() => {
     if (completedRef.current) return;
     const timer = window.setInterval(() => move('down'), dropSpeed);
@@ -178,7 +236,9 @@ export const TetrisGame = ({ difficulty, seed, onComplete }: MiniGameProps) => {
         <button className="game-control game-control--wide" onClick={() => move('drop')} aria-label="Hard drop piece"><ChevronsDown /><span>Hard drop</span><kbd>Space</kbd></button>
       </>}
     >
-      <div className="tetris-board" role="img" aria-label={`Tetris board, ${linesCleared} of ${targetLines} lines cleared`}>
+      <div ref={boardElRef} className="tetris-board" role="img" aria-label={`Tetris board, ${linesCleared} of ${targetLines} lines cleared`}
+        style={{ touchAction: 'none' }}
+        onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel}>
         {displayBoard.flatMap((row, rowIndex) => row.map((cell, columnIndex) => <span key={`${rowIndex}-${columnIndex}`} className={cell ? `filled color-${cell}` : ''} />))}
       </div>
     </MiniGameChrome>
