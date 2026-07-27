@@ -188,7 +188,7 @@ puzzle category, ♞) and equippable like any lock.
 
 ## 6. Test / build / deploy
 
-- Full suite: **__SUITE__** (was 311 before this work), `npm run build`
+- Full suite: **381 passing across 57 files** (was 311 before this work), `npm run build`
   and `npm run lint` green.
 - New/updated coverage: roster retirement + migration invariants,
   unlock ladder (tier maths, nav gating, announcements, grandfathering),
@@ -197,6 +197,6 @@ puzzle category, ♞) and equippable like any lock.
   forgeries, plus the touch tests above. Updated for intended behavior
   changes: onboarding/reachability tests (new default loadout,
   grandfathered nav), smoke-test count 36 → 37, featured-roster size.
-- Edge Functions redeployed to `cqacfzkyxmtmjzpksznj`: __DEPLOY__.
+- Edge Functions redeployed to `cqacfzkyxmtmjzpksznj`: `submit_result` (bundles the new chess engine + verify branch), `start_attack`, `list_targets`, `resolve_defense` (retired-roster bot pools).
   No DB migrations needed (progression derives from existing attack
   rows; retirement/chess logic lives in function code).
