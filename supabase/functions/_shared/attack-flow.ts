@@ -6,6 +6,7 @@ import { calculateAttackFee, calculateLoot } from './economy.ts';
 import { ECONOMY, MODULE_CONFIG, ALL_MODULE_TYPES } from './constants.ts';
 import { newSeed, createRng } from './rng.ts';
 import { VERIFIABLE_LOCK_TYPES } from './lock-solutions.ts';
+import { ACTIVE_MODULE_TYPES } from './roster.ts';
 import type { ModuleType, SecurityLoadout, SecurityModule } from './types.ts';
 
 export interface AttackModuleSeed {
@@ -150,7 +151,7 @@ export function generateBotLoadout(seed: string, difficultyBias: number = 0.5): 
   while (modules.length < ECONOMY.maxModules) {
     const pick = modules.length === 0
       ? firstVerifiable
-      : ALL_MODULE_TYPES[Math.floor(rng() * ALL_MODULE_TYPES.length)];
+      : ACTIVE_MODULE_TYPES[Math.floor(rng() * ACTIVE_MODULE_TYPES.length)];
     if (modules.length > 0 && usedTypes.has(pick)) continue;
     usedTypes.add(pick);
 

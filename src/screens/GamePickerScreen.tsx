@@ -17,7 +17,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { GameEmblem, GameThumbnail, StateBadge } from '../components/game';
 import { MiniGameHost } from '../components/minigames';
 import { getCatalogMeta, getGameStatus } from '../game/catalog';
-import { ALL_MODULE_TYPES, MODULE_CONFIG } from '../game/constants';
+import { MODULE_CONFIG } from '../game/constants';
+import { ACTIVE_MODULE_TYPES } from '../game/roster';
 import { calculateModuleStrength } from '../game/economy';
 import { buildCustomModule } from '../game/loadout';
 import { filterDisplayableListings } from '../game/listingSafety';
@@ -108,7 +109,7 @@ export const GamePickerScreen = () => {
       ? 'Tighter timing with moderate cognitive load.'
       : 'Little recovery time and a demanding pass condition.';
 
-  const builtInGames = useMemo(() => ALL_MODULE_TYPES.filter((type) => {
+  const builtInGames = useMemo(() => ACTIVE_MODULE_TYPES.filter((type) => {
     const config = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG];
     const matchesSearch = `${config.name} ${config.description}`.toLowerCase().includes(search.trim().toLowerCase());
     if (!matchesSearch) return false;

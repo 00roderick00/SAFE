@@ -2,7 +2,8 @@
 // Now with AI-driven bot strategies
 
 import { BotSafe, SecurityModule, SecurityLoadout, ModuleType } from '../types';
-import { ECONOMY, MODULE_CONFIG, ALL_MODULE_TYPES } from './constants';
+import { ECONOMY, MODULE_CONFIG } from './constants';
+import { ACTIVE_MODULE_TYPES } from './roster';
 import {
   calculateSecurityScore,
   calculateSuccessProbability,
@@ -41,8 +42,8 @@ function generateLoadout(targetDifficulty: number, preferredTypes?: ModuleType[]
   if (preferredTypes && preferredTypes.length >= 3) {
     selectedTypes = preferredTypes.slice(0, ECONOMY.maxModules);
   } else {
-    // Pick random varied modules from all types
-    const shuffled = [...ALL_MODULE_TYPES].sort(() => Math.random() - 0.5);
+    // Pick random varied modules from the active (non-retired) roster
+    const shuffled = [...ACTIVE_MODULE_TYPES].sort(() => Math.random() - 0.5);
     selectedTypes = shuffled.slice(0, ECONOMY.maxModules);
   }
 

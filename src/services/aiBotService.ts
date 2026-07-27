@@ -2,7 +2,8 @@
 // Can connect to Claude API or use local heuristics as fallback
 
 import { ModuleType, SecurityModule, SecurityLoadout, BotSafe } from '../types';
-import { MODULE_CONFIG, MODULE_TYPES_BY_CATEGORY, ALL_MODULE_TYPES } from '../game/constants';
+import { MODULE_CONFIG } from '../game/constants';
+import { ACTIVE_MODULE_TYPES, ACTIVE_MODULE_TYPES_BY_CATEGORY } from '../game/roster';
 import {
   calculateSecurityScore,
   calculateAttackFee,
@@ -99,7 +100,7 @@ const PERSONALITY_TEMPLATES: Record<BotPersonality, Partial<BotStrategy>> = {
 };
 
 // Current meta - which games are considered "strong" (hard for attackers)
-const CURRENT_META_GAMES: ModuleType[] = ['safedial', 'tetris', 'sudoku', 'morse', 'galaga', 'cipher'];
+const CURRENT_META_GAMES: ModuleType[] = ['safedial', 'tetris', 'sudoku', 'morse', 'breakout', 'cipher'];
 
 class AIBotService {
   private config: AIServiceConfig;
@@ -304,13 +305,13 @@ Respond with ONLY valid JSON, no other text.`;
 
     switch (personality) {
       case 'minimalist':
-        pool = MODULE_TYPES_BY_CATEGORY.classic;
+        pool = ACTIVE_MODULE_TYPES_BY_CATEGORY.classic;
         break;
       case 'arcade_master':
-        pool = MODULE_TYPES_BY_CATEGORY.arcade;
+        pool = ACTIVE_MODULE_TYPES_BY_CATEGORY.arcade;
         break;
       case 'puzzle_expert':
-        pool = MODULE_TYPES_BY_CATEGORY.puzzle;
+        pool = ACTIVE_MODULE_TYPES_BY_CATEGORY.puzzle;
         break;
       case 'meta_gamer':
         pool = CURRENT_META_GAMES;
@@ -318,28 +319,28 @@ Respond with ONLY valid JSON, no other text.`;
       case 'trickster':
         // Mix from all categories for surprise
         pool = [
-          this.randomFrom(MODULE_TYPES_BY_CATEGORY.classic),
-          this.randomFrom(MODULE_TYPES_BY_CATEGORY.arcade),
-          this.randomFrom(MODULE_TYPES_BY_CATEGORY.puzzle),
+          this.randomFrom(ACTIVE_MODULE_TYPES_BY_CATEGORY.classic),
+          this.randomFrom(ACTIVE_MODULE_TYPES_BY_CATEGORY.arcade),
+          this.randomFrom(ACTIVE_MODULE_TYPES_BY_CATEGORY.puzzle),
         ];
         return pool;
       case 'chaos':
         // Completely random
         return [
-          this.randomFrom(ALL_MODULE_TYPES),
-          this.randomFrom(ALL_MODULE_TYPES),
-          this.randomFrom(ALL_MODULE_TYPES),
+          this.randomFrom(ACTIVE_MODULE_TYPES),
+          this.randomFrom(ACTIVE_MODULE_TYPES),
+          this.randomFrom(ACTIVE_MODULE_TYPES),
         ];
       default:
         // Balanced - mix categories
-        pool = ALL_MODULE_TYPES;
+        pool = ACTIVE_MODULE_TYPES;
     }
 
     // Counter-strategy: avoid modules the player uses (they're probably good at those)
     // Note: chaos and trickster return early, so this code only runs for other personalities
     if (context?.playerLoadout) {
       pool = pool.filter(m => !context.playerLoadout!.includes(m));
-      if (pool.length < 3) pool = ALL_MODULE_TYPES; // fallback if too filtered
+      if (pool.length < 3) pool = ACTIVE_MODULE_TYPES; // fallback if too filtered
     }
 
     // Pick 3 unique modules
@@ -354,7 +355,7 @@ Respond with ONLY valid JSON, no other text.`;
 
     // Fill with defaults if needed
     while (selected.length < 3) {
-      selected.push(this.randomFrom(MODULE_TYPES_BY_CATEGORY.classic));
+      selected.push(this.randomFrom(ACTIVE_MODULE_TYPES_BY_CATEGORY.classic));
     }
 
     return selected;

@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { api, migrateLocalIfNeeded } from './api';
 import { usePlayerStore } from '../store/playerStore';
+import { migrateRetiredLoadout } from '../game/roster';
+import { calculateSecurityScore } from '../game/economy';
 
 /**
  * On every fresh session, hydrate the client stores from the server.
@@ -55,10 +57,30 @@ export function useHydrateFromServer(session: Session | null) {
         const profile = await api.getProfile(userId);
         if (cancelled) return;
         if (safe) {
+          // Tactile-redesign migration: if the server-stored loadout
+          // still holds a retired built-in, substitute its kept analog
+          // and write the fix back so the safe never goes stale. All
+          // retired types are class-2, so the loadout's verifiable-lock
+          // count (and the forgery guarantee) is unchanged.
+          let loadout = safe.security_loadout;
+          const migrated = migrateRetiredLoadout(loadout);
+          if (migrated.changed) {
+            loadout = {
+              modules: migrated.loadout.modules,
+              effectiveScore: calculateSecurityScore({ modules: migrated.loadout.modules, effectiveScore: 0 }),
+            };
+            try {
+              await api.updateLoadout(userId, loadout);
+            } catch (updateErr) {
+              // eslint-disable-next-line no-console
+              console.warn('[hydrate] retired-loadout writeback failed', updateErr);
+            }
+          }
+          if (cancelled) return;
           usePlayerStore.setState({
             id: userId,
             safeBalance: safe.balance,
-            securityLoadout: safe.security_loadout,
+            securityLoadout: loadout,
             username: profile?.handle ?? state.username,
             riskRating: profile?.mmr ?? state.riskRating,
           });

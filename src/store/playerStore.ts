@@ -5,6 +5,7 @@ import { persist } from 'zustand/middleware';
 import { PlayerState, SecurityModule, InsurancePolicy, ModuleType } from '../types';
 import { ECONOMY, MODULE_CONFIG } from '../game/constants';
 import { calculateSecurityScore } from '../game/economy';
+import { isRetiredModuleType, migrateRetiredLoadout } from '../game/roster';
 
 interface PlayerStore extends PlayerState {
   // Actions
@@ -164,7 +165,9 @@ export const usePlayerStore = create<PlayerStore>()(
       setModuleType: (index, type) =>
         set((state) => {
           const config = MODULE_CONFIG[type as keyof typeof MODULE_CONFIG];
-          if (!config) return state;
+          // Retired types can't be newly equipped (tactile redesign);
+          // existing loadouts are migrated by migrateRetiredLoadout.
+          if (!config || isRetiredModuleType(type)) return state;
 
           const newModules = [...state.securityLoadout.modules];
           const existingModule = newModules[index];
@@ -239,6 +242,27 @@ export const usePlayerStore = create<PlayerStore>()(
     }),
     {
       name: 'safe-player-storage',
+      // v1: tactile-redesign roster retirement. Any persisted loadout
+      // holding a retired built-in is transparently substituted with its
+      // kept analog so the safe stays playable (and its verifiable-lock
+      // count is unchanged — retired types are all class-2).
+      version: 1,
+      migrate: (persisted) => {
+        const state = persisted as PlayerState;
+        if (state?.securityLoadout?.modules) {
+          const { loadout, changed } = migrateRetiredLoadout(state.securityLoadout);
+          if (changed) {
+            return {
+              ...state,
+              securityLoadout: {
+                modules: loadout.modules,
+                effectiveScore: calculateSecurityScore({ modules: loadout.modules, effectiveScore: 0 }),
+              },
+            };
+          }
+        }
+        return state;
+      },
     }
   )
 );
