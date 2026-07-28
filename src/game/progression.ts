@@ -54,6 +54,50 @@ export function requirementFor(surface: GatedSurface): string {
   return TIER_REQUIREMENTS[SURFACE_TIER[surface] as Exclude<UnlockTier, 0>];
 }
 
+/** The tier a surface needs (for locked-state copy and route guards). */
+export function tierFor(surface: GatedSurface): UnlockTier {
+  return SURFACE_TIER[surface];
+}
+
+/** How many completed heists each tier needs. */
+const TIER_HEISTS: Record<Exclude<UnlockTier, 0>, number> = { 1: 1, 2: 3, 3: 5 };
+
+/** Concrete progress toward unlocking a surface, so a locked screen can
+ *  say "1 of 3 heists" rather than only naming the condition. */
+export function progressToward(
+  surface: GatedSurface,
+  p: ProgressionCounters,
+): { current: number; needed: number; remaining: number; label: string } {
+  const needed = TIER_HEISTS[SURFACE_TIER[surface] as Exclude<UnlockTier, 0>];
+  const current = Math.min(p.completedHeists, needed);
+  const remaining = Math.max(0, needed - p.completedHeists);
+  return {
+    current,
+    needed,
+    remaining,
+    label: `${current} of ${needed} heist${needed === 1 ? '' : 's'} completed`,
+  };
+}
+
+/** Player-facing name for a gated surface, used in locked-state copy. */
+export const SURFACE_LABELS: Record<GatedSurface, string> = {
+  security: 'Security',
+  history: 'History',
+  insurance: 'Insurance',
+  marketplace: 'Marketplace',
+  create: 'Create',
+};
+
+/** What the player gets when this surface unlocks — shown on the locked
+ *  screen so the depth is visible before it is reachable. */
+export const SURFACE_PITCH: Record<GatedSurface, string> = {
+  security: 'Tune your safe: pick any lock from the full game catalog and set its difficulty.',
+  history: 'Review every heist and defense, with the full settlement breakdown.',
+  insurance: 'Buy coverage so a breach costs you a fraction of the loot.',
+  marketplace: 'Equip locks built by other players — and pay them a royalty every time someone plays.',
+  create: 'Build your own games in the AI Workshop and earn royalties when others equip them.',
+};
+
 /** What a tier newly unlocks (for the announcement moment). */
 export const TIER_UNLOCKS: Record<Exclude<UnlockTier, 0>, { title: string; details: string }> = {
   1: { title: 'Security & History unlocked', details: 'Tune your locks in the full game picker and review every heist.' },

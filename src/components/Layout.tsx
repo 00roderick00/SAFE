@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -10,6 +10,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
+import { LockedSurfaceSheet } from './LockedSurface';
 import {
   getUnlockTier,
   isSurfaceUnlocked,
@@ -42,20 +43,16 @@ const UnlockAnnouncement = ({ fromTier, toTier, onDismiss }: { fromTier: number;
   const crossed = ([1, 2, 3] as const).filter((t) => t > fromTier && t <= toTier);
   if (crossed.length === 0) return null;
   return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm px-6"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+    // Plain CSS animation, not framer-motion: a stuck animation frame
+    // leaves this modal half-transparent over the whole app while still
+    // swallowing taps. Same reasoning as LockedSurfaceSheet.
+    <div
+      className="unlock-announce-backdrop"
       role="dialog"
       aria-label="New features unlocked"
       onClick={onDismiss}
     >
-      <motion.div
-        className="max-w-sm w-full p-6 text-center rounded-xl border border-primary/40 bg-background shadow-2xl"
-        initial={{ scale: 0.9, y: 12 }}
-        animate={{ scale: 1, y: 0 }}
-      >
+      <div className="unlock-announce max-w-sm w-full p-6 text-center rounded-xl border border-primary/40 bg-background shadow-2xl">
         {crossed.map((t) => (
           <div key={t} className="mb-4 last:mb-0">
             <p className="font-display text-lg font-bold text-primary neon-text-primary">{TIER_UNLOCKS[t].title}</p>
@@ -65,8 +62,8 @@ const UnlockAnnouncement = ({ fromTier, toTier, onDismiss }: { fromTier: number;
         <button className="btn-neon mt-4 w-full" onClick={onDismiss}>
           Continue
         </button>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 };
 
@@ -77,6 +74,7 @@ export const Layout = ({ children }: LayoutProps) => {
   const lastAnnouncedTier = usePlayerStore((s) => s.lastAnnouncedTier);
   const markTierAnnounced = usePlayerStore((s) => s.markTierAnnounced);
   const tier = getUnlockTier({ completedHeists, successfulHeists });
+  const [lockedSheet, setLockedSheet] = useState<GatedSurface | null>(null);
 
   // Hide nav on attack screen
   const hideNav = location.pathname.startsWith('/attack');
@@ -89,6 +87,12 @@ export const Layout = ({ children }: LayoutProps) => {
       </main>
 
       {/* Bottom Navigation */}
+      <AnimatePresence>
+        {lockedSheet && (
+          <LockedSurfaceSheet surface={lockedSheet} onClose={() => setLockedSheet(null)} />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {tier > lastAnnouncedTier && (
           <UnlockAnnouncement
@@ -107,14 +111,20 @@ export const Layout = ({ children }: LayoutProps) => {
               const Icon = item.icon;
 
               if (item.surface && !isSurfaceUnlocked(item.surface, tier)) {
+                const surface = item.surface;
+                // A locked item must be TAPPABLE, not just dimmed: on a
+                // touch device there is no hover, so a `title` tooltip is
+                // invisible and the player has no way to discover why the
+                // item is dark or how to open it. Tapping reveals a small
+                // sheet with the unlock condition and their progress.
                 return (
-                  <div
+                  <button
                     key={item.path}
-                    className="app-nav__item opacity-45 cursor-not-allowed select-none"
-                    role="link"
-                    aria-disabled="true"
-                    aria-label={`${item.label} — locked. ${requirementFor(item.surface)}.`}
-                    title={`${requirementFor(item.surface)} to unlock`}
+                    type="button"
+                    className="app-nav__item app-nav__item--locked"
+                    aria-haspopup="dialog"
+                    aria-label={`${item.label} — locked. ${requirementFor(surface)}. Tap to see how to unlock.`}
+                    onClick={() => setLockedSheet(surface)}
                   >
                     <div className="flex flex-col items-center justify-center text-text-dim">
                       <span className="relative">
@@ -123,7 +133,7 @@ export const Layout = ({ children }: LayoutProps) => {
                       </span>
                       <span className="text-xs mt-1 font-medium">{item.label}</span>
                     </div>
-                  </div>
+                  </button>
                 );
               }
 

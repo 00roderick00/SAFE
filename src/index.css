@@ -1131,6 +1131,20 @@ input:focus-visible,
   color: var(--color-text-dim);
 }
 
+/* Locked nav item (progressive disclosure): dimmed but still tappable —
+   tapping opens the unlock explainer, since touch has no hover tooltip. */
+.app-nav__item--locked {
+  opacity: .45;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.app-nav__item--locked:active { opacity: .65; }
+
+
 .app-nav__item > div {
   min-width: 0;
 }
@@ -2211,3 +2225,37 @@ input:focus-visible,
 .verify-warning strong { font-size: 13px; }
 .verify-warning span { color: var(--color-text-secondary); font-size: 11px; line-height: 1.4; }
 .verify-warning > button { flex: none; align-self: flex-start; color: var(--state-color); }
+
+/* ---- Progressive-disclosure overlays -------------------------------
+   Deliberately CSS-driven, not framer-motion: a stalled animation frame
+   leaves these overlays semi-transparent while still capturing taps,
+   and the locked sheet is the only way a touch player can discover why
+   a nav item is dimmed. They must always settle at full opacity. */
+@keyframes locked-fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes locked-slide-up { from { transform: translateY(40px) } to { transform: none } }
+@keyframes unlock-pop { from { transform: translateY(12px) scale(.94) } to { transform: none } }
+
+.locked-sheet-backdrop,
+.unlock-announce-backdrop {
+  position: fixed;
+  inset: 0;
+  /* Above the bottom nav (120) and any screen-level sticky CTA. */
+  z-index: 250;
+  display: flex;
+  justify-content: center;
+  background: color-mix(in srgb, var(--color-background) 82%, transparent);
+  backdrop-filter: blur(4px);
+  animation: locked-fade-in .18s ease-out both;
+}
+.locked-sheet-backdrop { align-items: flex-end; }
+.unlock-announce-backdrop { align-items: center; padding: 0 24px; }
+
+.locked-sheet { animation: locked-slide-up .22s ease-out both; }
+.unlock-announce { animation: unlock-pop .22s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .locked-sheet-backdrop,
+  .unlock-announce-backdrop,
+  .locked-sheet,
+  .unlock-announce { animation: none; }
+}

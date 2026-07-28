@@ -388,3 +388,61 @@ Two secondary defects fell out of the same investigation:
   Functions + trigger) is backward-compatible with the current `main`
   bundle — which is exactly why the DB trigger matters: it protects
   players on the old bundle right now.
+
+## 9. Follow-up 3 (2026-07-28): tier-0 discoverability and route guards
+
+Two gaps found rendering a real tier-0 account.
+
+### 9.1 Locked nav items were hover-only
+
+Locked items carried their unlock condition solely in `title` /
+`aria-label`. Touch has no hover, so a mobile player saw a dimmed icon
+with no reason and no way to find one — on the platform this game is
+built for, the explanation was effectively absent.
+
+Locked items are now **tappable buttons** (`aria-haspopup="dialog"`,
+not `disabled` — a disabled control can't explain itself) that open a
+small bottom sheet with: what the surface is, the unlock condition as
+**visible text**, concrete progress ("0 of 1 heist completed"), and a
+"Start a heist" action that goes and does the thing. Nothing is shown
+until tapped, so the nav stays unobtrusive.
+
+### 9.2 Route-level gating was missing
+
+Hiding a nav item is not gating: a tier-0 account deep-linking
+`/security`, `/marketplace` or `/custom-games` (bookmark, shared link,
+browser back) got the full screen. A `RequireTier` wrapper now guards
+every gated route and renders a locked screen — surface name, what it
+unlocks, the condition, a progress bar, and "Start a heist" / "Back to
+safe" so the player is never stranded. Showing the locked screen rather
+than redirecting keeps the URL meaningful and self-explanatory.
+
+Still **presentation only**: no Edge Function or RLS policy consults the
+tier, and a direct API caller can hit every endpoint at tier 0. The
+security model has never depended on the UI hiding anything.
+
+### 9.3 Fixed along the way: overlays could stick mid-animation
+
+While verifying in a real browser, the locked sheet rendered frozen at
+`opacity: 0.18` — framer-motion's animation stalled and never settled,
+leaving the explainer unreadable while still capturing taps. The unlock
+announcement shipped in §3 used the same pattern and had the same
+exposure. Both overlays are now plain CSS animations (with a
+`prefers-reduced-motion` opt-out) and sit at `z-index: 250`, above the
+bottom nav and any screen-level sticky CTA — verified visually: sheet
+fully opaque, buttons unobstructed.
+
+### 9.4 Tests
+
+- `App.routeGating.test.tsx` — deep-links **every gated route at every
+  tier** through the real `App` route table (35 cases): locked routes
+  render the explainer with its condition and progress bar; unlocked
+  ones render the real screen; `/` and `/heist` are never blocked;
+  grandfathered accounts (`setProgressionFromServer(12, 4)`) open
+  everything, as does a first successful breach at 1 completed heist.
+- `progressionGating.test.tsx` — every locked nav item is a real,
+  non-disabled button; tapping reveals the condition and progress as
+  **text content** (explicitly not a title attribute); the sheet is
+  dismissible; each surface explains itself rather than showing generic
+  copy; unlocked items stay ordinary links with no sheet.
+- Suite **464 passing** (was 424), build + lint green.
