@@ -306,3 +306,85 @@ itself, and the client recomputes on hydrate.
   `codex-rebuild` and **not merged** — the deployed server side is
   backward-compatible with the current `main` bundle, so nothing is
   broken while they await your review.
+
+## 8. Follow-up 2 (2026-07-27): retired types came back, and why
+
+### 8.1 Root cause — custom modules were skipped by design
+
+`roderick.jones` was serving `pacman, quickmath, maze` *after* the §7.4
+backfill, and a reload didn't heal it. The cause was not persistence and
+not the client wiring: the module was a **custom DSL game stored with
+`type: 'pacman'` while its `customConfig.baseEngine` was `maze`**.
+
+Both `migrateRetiredLoadout` and the SQL backfill skipped custom modules
+**wholesale** — that was an explicit (and wrong) design decision from
+§2, documented at the time as "custom games are never touched". So the
+game rendered correctly (DSL games render through the interpreter,
+never through `type`) while the stale label advertised a retired game on
+the public target card, and nothing was ever going to correct it.
+
+Two secondary defects fell out of the same investigation:
+
+- The first backfill's predicate used `m->'customConfig' is null`, which
+  is **false for an explicit JSON null** (`->` yields jsonb `'null'`, not
+  SQL NULL). Its own completeness check used the same predicate, so it
+  reported "0 remaining" against its own blind spot.
+- `pacman -> maze` in a loadout that already contained `maze` produced
+  two identical locks.
+
+### 8.2 Fixes
+
+- **Custom modules are now migrated**, not skipped: `type` is relabelled
+  to the engine that actually renders the game (`customConfig
+  .baseEngine`), or substituted if that engine is itself retired. The
+  creator's name/description/weight, `customGameId` and DSL payload are
+  preserved, so the game keeps playing and stays DSL-verified.
+- **No duplicate locks**: replacement now walks a preference order
+  (`REPLACEMENT_FALLBACKS`) skipping anything already equipped. Tested
+  for every retired type and for multi-retired loadouts.
+- **Write-path invariant, two layers.** `api.updateLoadout` normalizes
+  before writing (every client loadout write funnels through it), and a
+  **`BEFORE INSERT OR UPDATE` trigger on `safes`** normalizes every
+  write at the database — so no client, however stale, can store a
+  retired type. `buildCustomModule` also refuses to stamp a retired
+  engine onto a newly equipped community game.
+- The SQL normalizer initially disagreed with the TypeScript (it picked
+  `memorymatch` where TS picks `breakout`); a follow-up migration
+  aligned its fallback walk so one rule governs every path.
+
+### 8.3 Verification against production
+
+- `20260727230000` installed the trigger, self-tested the normalizer on
+  roderick.jones's exact shape, and re-backfilled: *1 safe normalized,
+  verified 0 carry a retired type*.
+- `20260727233000` aligned the fallback order (self-test now asserts the
+  SQL returns exactly what `migrateRetiredLoadout` returns).
+- `20260727235000` **proves the invariant end-to-end against the real
+  table**: it attempts to write `[snake, keypad, pacman]` to a live safe
+  and asserts what actually lands is `{maze, keypad, breakout}` — no
+  retired type, no duplicate, custom-game linkage intact — then restores
+  the row unchanged. This is the check a reload test cannot make, since
+  a reload doesn't necessarily issue a loadout write. Re-running the
+  migrations against any environment re-proves it.
+- Live re-query of `public_safe_snapshots`: **7 safes, 0 carrying a
+  retired type, 0 with duplicate locks.**
+
+### 8.4 Honest notes
+
+- `roderick.jones` slot 0 settled on `memorymatch`, not the `breakout`
+  the TypeScript would now pick — the first enforcement pass wrote
+  `memorymatch` before the fallback alignment, and re-normalizing is a
+  no-op once the type is no longer retired. Both are valid and stable
+  (neither side will rewrite it again); it is a cosmetic difference only.
+- That module's **display name is still "Pac-Man"** because that is the
+  creator's own custom-game title, stored in `name`. Retirement governs
+  the type roster, not user-authored titles, so it is deliberately left
+  alone — the same as any player naming a game today.
+- Suite **424 passing** (was 405). Regression coverage for this exact
+  production loadout lives in `roster.retired.regression.test.ts`, and
+  the write-path in `updateLoadout.invariant.test.ts`.
+- `codex-rebuild` is pushed. `main` still carries the §1–§6 release; the
+  §7/§8 client changes await your merge. The deployed server side (Edge
+  Functions + trigger) is backward-compatible with the current `main`
+  bundle — which is exactly why the DB trigger matters: it protects
+  players on the old bundle right now.

@@ -5,6 +5,7 @@
 import type { SecurityModule, ModuleType } from '../types';
 import type { CustomGame } from '../services/api';
 import { sanitizeUserText } from '../utils/sanitize';
+import { isRetiredModuleType, RETIRED_REPLACEMENTS } from './roster';
 
 /**
  * Build the SecurityModule a custom game occupies when equipped into a
@@ -19,9 +20,16 @@ import { sanitizeUserText } from '../utils/sanitize';
  */
 export function buildCustomModule(g: CustomGame, slotIndex: number): SecurityModule {
   const payload = g.mode === 'dsl_program' ? g.dsl_program : g.config;
+  // A community game built on a now-retired engine must not stamp that
+  // retired type onto the equipped module — that is how a live safe
+  // ended up advertising `pacman` on its target card. The game itself
+  // still plays (DSL through the interpreter, engine_config through its
+  // base engine); only the stored label is normalized.
+  const engine = g.base_engine as ModuleType;
+  const type = isRetiredModuleType(engine) ? (RETIRED_REPLACEMENTS[engine] ?? 'memorymatch') : engine;
   return {
     id: `${g.id}-slot-${slotIndex}`,
-    type: g.base_engine as ModuleType,
+    type,
     difficulty: g.calibrated_difficulty ?? 0.5,
     weight: 1,
     name: sanitizeUserText(g.name, { maxLength: 60 }),

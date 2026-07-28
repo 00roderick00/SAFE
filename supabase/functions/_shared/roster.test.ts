@@ -81,14 +81,29 @@ describe('migrateRetiredLoadout', () => {
     expect(res.loadout).toBe(before);
   });
 
-  it('never touches custom-game modules, even on a retired base engine', () => {
+  it('relabels a custom module off a retired type but keeps it playable', () => {
+    // Previously custom modules were skipped wholesale, which let a
+    // live safe keep advertising `pacman`/`qbert` on its target card
+    // (see roster.retired.regression.test.ts). The game still plays —
+    // only the stale engine label is corrected.
     const custom = mod('qbert', {
       customGameId: 'cg-1',
       customConfig: { baseEngine: 'qbert' as SecurityModule['type'], config: {}, mode: 'engine_config' },
     });
     const res = migrateRetiredLoadout(loadoutOf(custom));
+    expect(res.changed).toBe(true);
+    expect(res.loadout.modules[0].type).toBe('maze');
+    expect(res.loadout.modules[0].customGameId).toBe('cg-1');
+    expect(res.loadout.modules[0].customConfig?.mode).toBe('engine_config');
+  });
+
+  it('leaves a custom module alone when its type is already active', () => {
+    const custom = mod('maze', {
+      customGameId: 'cg-2',
+      customConfig: { baseEngine: 'maze' as SecurityModule['type'], config: {}, mode: 'dsl_program' },
+    });
+    const res = migrateRetiredLoadout(loadoutOf(custom));
     expect(res.changed).toBe(false);
-    expect(res.loadout.modules[0].type).toBe('qbert');
   });
 
   it('SECURITY: migration never changes verifiableCount for any composition', () => {

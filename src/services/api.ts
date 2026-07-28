@@ -4,6 +4,7 @@
 
 import { supabase } from './supabaseClient';
 import { clientSupportedModuleTypes } from '../components/minigames/registry';
+import { migrateRetiredLoadout } from '../game/roster';
 import type {
   ModuleType,
   SecurityLoadout,
@@ -267,10 +268,18 @@ export const api = {
     return data;
   },
 
+  /**
+   * WRITE-PATH INVARIANT: no safe may ever store a retired module type.
+   * Every loadout write funnels through here, so normalizing at this
+   * single point means a stale tab, an un-migrated localStorage blob or
+   * an old equip path can't reintroduce one. (The DB has a trigger that
+   * enforces the same rule server-side for clients that bypass this.)
+   */
   async updateLoadout(userId: string, loadout: SecurityLoadout): Promise<void> {
+    const safeLoadout = migrateRetiredLoadout(loadout).loadout;
     const { error } = await supabase
       .from('safes')
-      .update({ security_loadout: loadout, updated_at: new Date().toISOString() })
+      .update({ security_loadout: safeLoadout, updated_at: new Date().toISOString() })
       .eq('owner_id', userId);
     if (error) throw error;
   },
