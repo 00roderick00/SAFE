@@ -73,10 +73,43 @@ describe('every state still reads', () => {
     expect(filled, `${state} tint gradient is not painted onto a face`).toBe(true);
   });
 
-  it('breached keeps its crack path and recovering/exposed keep the scan line', () => {
-    const { container: breachedC } = render(<SafeGraphic state="breached" />);
-    expect(svgOf(breachedC).querySelector('path[stroke="#fff"]')).not.toBeNull();
+  it('breached reads through MATERIAL, not a drawn crack line', () => {
+    const { container } = render(<SafeGraphic state="breached" />);
+    const svg = svgOf(container);
 
+    // The white zig-zag read as a rendering glitch rather than damage.
+    // Nothing in the breached vault may draw a bright graphic stroke.
+    const brightStrokes = [...svg.querySelectorAll('path, line, polyline')].filter((el) => {
+      const stroke = (el.getAttribute('stroke') ?? '').toLowerCase();
+      return stroke === '#fff' || stroke === '#ffffff' || stroke === 'white';
+    });
+    expect(brightStrokes).toHaveLength(0);
+
+    // Instead: the shadowed interior is revealed behind the sprung door…
+    const gapGradient = [...svg.querySelectorAll('linearGradient')].find((g) => g.id.startsWith('breach-gap'));
+    expect(gapGradient, 'breach gap gradient missing').toBeDefined();
+    const gapPainted = [...svg.querySelectorAll('rect')].some(
+      (r) => (r.getAttribute('fill') ?? '').includes(gapGradient!.id)
+    );
+    expect(gapPainted, 'breach gap is not painted').toBe(true);
+
+    // …and the door keeps the cues that already said "breached".
+    expect(svg.querySelector('circle[stroke-dasharray="24 14"]'), 'state ring lost its breached dash').not.toBeNull();
+  });
+
+  it('non-breached states draw no breach gap', () => {
+    for (const state of ['secure', 'exposed', 'attacking', 'recovering'] as const) {
+      const { container } = render(<SafeGraphic state={state} />);
+      const svg = svgOf(container);
+      const gap = [...svg.querySelectorAll('linearGradient')].find((g) => g.id.startsWith('breach-gap'));
+      const painted = [...svg.querySelectorAll('rect')].some(
+        (r) => gap && (r.getAttribute('fill') ?? '').includes(gap.id)
+      );
+      expect(painted, `${state} should not show the breach gap`).toBe(false);
+    }
+  });
+
+  it('recovering/exposed keep the scan line', () => {
     for (const state of ['exposed', 'attacking', 'recovering'] as const) {
       const { container } = render(<SafeGraphic state={state} />);
       const scan = [...svgOf(container).querySelectorAll('path')].some(
@@ -95,6 +128,45 @@ describe('every state still reads', () => {
       .filter((t) => t?.includes('160 160'));
     for (const angle of [0, 60, 120, 180, 240, 300]) {
       expect(rotations).toContain(`rotate(${angle} 160 160)`);
+    }
+  });
+});
+
+describe('bolt hardware', () => {
+  it('each bolt reads as a cylinder: across-axis shading, end cap and seams', () => {
+    const { container } = render(<SafeGraphic state="secure" />);
+    const svg = svgOf(container);
+    const barrel = [...svg.querySelectorAll('linearGradient')].find((g) => g.id.startsWith('bolt-barrel'));
+    const cap = [...svg.querySelectorAll('linearGradient')].find((g) => g.id.startsWith('bolt-cap'));
+    expect(barrel, 'bolt barrel gradient missing').toBeDefined();
+    expect(cap, 'bolt cap gradient missing').toBeDefined();
+
+    // Shading runs ACROSS the bolt (x1->x2, flat in y) — that is what
+    // separates a cylinder from a flat pill.
+    expect(barrel!.getAttribute('y1')).toBe(barrel!.getAttribute('y2'));
+    expect(barrel!.getAttribute('x1')).not.toBe(barrel!.getAttribute('x2'));
+
+    const barrels = [...svg.querySelectorAll('rect')].filter((r) => (r.getAttribute('fill') ?? '').includes(barrel!.id));
+    const caps = [...svg.querySelectorAll('rect')].filter((r) => (r.getAttribute('fill') ?? '').includes(cap!.id));
+    expect(barrels).toHaveLength(6);
+    expect(caps).toHaveLength(12); // end cap + collar per bolt
+  });
+});
+
+describe('shadow tones are cool blue-steel, not neutral grey', () => {
+  it('the dark end of the metal gradients is blue-biased', () => {
+    const { container } = render(<SafeGraphic state="secure" />);
+    const svg = svgOf(container);
+    const darkStops = [...svg.querySelectorAll('linearGradient stop, radialGradient stop')]
+      .map((s2) => s2.getAttribute('stop-color') ?? '')
+      .filter((c) => /^#[0-9a-f]{6}$/i.test(c))
+      .map((c) => ({ c, r: parseInt(c.slice(1, 3), 16), g: parseInt(c.slice(3, 5), 16), b: parseInt(c.slice(5, 7), 16) }))
+      // Shadow tones only: the darkest third of the ramp.
+      .filter((x) => x.r + x.g + x.b < 190 && x.r + x.g + x.b > 0);
+
+    expect(darkStops.length).toBeGreaterThan(4);
+    for (const { c, r, b } of darkStops) {
+      expect(b, `${c} should be blue-biased (b > r)`).toBeGreaterThan(r);
     }
   });
 });
@@ -122,8 +194,10 @@ describe('performance budget', () => {
     const { container } = render(<SafeGraphic state="secure" balance={100} locks={LOCKS} />);
     // Guard rail: the material is layered gradients + hairlines, so the
     // count should stay in the low hundreds. Fail loudly if a future
-    // change starts emitting geometry per-pixel.
-    expect(svgOf(container).querySelectorAll('*').length).toBeLessThan(260);
+    // change starts emitting geometry per-pixel. Raised from 260 when
+    // the six bolts became real hardware (barrel + collar + end cap +
+    // seam + seat shadow each) rather than single rounded rects.
+    expect(svgOf(container).querySelectorAll('*').length).toBeLessThan(275);
   });
 
   it('grain and numerals are deterministic across renders (no Math.random)', () => {

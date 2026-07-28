@@ -111,9 +111,9 @@ export const SafeGraphic = ({
             <linearGradient id={id('door-metal')} x1="0.12" y1="0.02" x2="0.88" y2="1">
               <stop offset="0" stopColor="#b3cadb" />
               <stop offset="0.16" stopColor="#7d94a6" />
-              <stop offset="0.38" stopColor="#516675" />
-              <stop offset="0.66" stopColor="#2b3c48" />
-              <stop offset="1" stopColor="#101a22" />
+              <stop offset="0.38" stopColor="#4a6375" />
+              <stop offset="0.66" stopColor="#243646" />
+              <stop offset="1" stopColor="#0a1622" />
             </linearGradient>
             {/* Vignette that darkens the rim so the face reads domed. */}
             <radialGradient id={id('door-vignette')} cx="50%" cy="50%" r="50%">
@@ -127,14 +127,14 @@ export const SafeGraphic = ({
             <linearGradient id={id('bevel')} x1="0.15" y1="0" x2="0.85" y2="1">
               <stop offset="0" stopColor="#cfe2ef" />
               <stop offset="0.35" stopColor="#7d95a5" />
-              <stop offset="0.62" stopColor="#2b3a45" />
-              <stop offset="1" stopColor="#0b1218" />
+              <stop offset="0.62" stopColor="#243646" />
+              <stop offset="1" stopColor="#07111e" />
             </linearGradient>
             {/* Inverted bevel for inner walls (light comes off the far
                 side of a recess). */}
             <linearGradient id={id('bevel-inv')} x1="0.15" y1="0" x2="0.85" y2="1">
-              <stop offset="0" stopColor="#0b1218" />
-              <stop offset="0.4" stopColor="#22303a" />
+              <stop offset="0" stopColor="#07111e" />
+              <stop offset="0.4" stopColor="#1b2d3e" />
               <stop offset="0.75" stopColor="#8aa1b1" />
               <stop offset="1" stopColor="#c4d8e6" />
             </linearGradient>
@@ -167,20 +167,43 @@ export const SafeGraphic = ({
             {/* Frame: same steel family, flatter and darker than the door. */}
             <linearGradient id={id('frame-metal')} x1="0" x2="1" y1="0" y2="1">
               <stop stopColor="#54697a" />
-              <stop offset="0.32" stopColor="#1a242c" />
+              <stop offset="0.32" stopColor="#15222f" />
               <stop offset="0.68" stopColor="#31414c" />
-              <stop offset="1" stopColor="#0a1116" />
+              <stop offset="1" stopColor="#06101c" />
             </linearGradient>
+            {/* Bolt barrel: across-axis cylinder shading. */}
+            <linearGradient id={id('bolt-barrel')} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#0d1b28" />
+              <stop offset="0.18" stopColor="#41586c" />
+              <stop offset="0.38" stopColor="#b9d0e2" />
+              <stop offset="0.55" stopColor="#7089a0" />
+              <stop offset="0.8" stopColor="#2a3d50" />
+              <stop offset="1" stopColor="#0a1420" />
+            </linearGradient>
+            {/* Bolt end cap / collar: brighter, same across-axis ramp. */}
+            <linearGradient id={id('bolt-cap')} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#1b2c3c" />
+              <stop offset="0.35" stopColor="#cfe2f2" />
+              <stop offset="0.62" stopColor="#8ba3b8" />
+              <stop offset="1" stopColor="#16283a" />
+            </linearGradient>
+            {/* Breach: the dark interior revealed behind the sprung door. */}
+            <linearGradient id={id('breach-gap')} x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="#01050a" stopOpacity="0.95" />
+              <stop offset="0.7" stopColor="#02080f" stopOpacity="0.75" />
+              <stop offset="1" stopColor="#04101c" stopOpacity="0" />
+            </linearGradient>
+
             {/* Polished hub cone: bright sweep converging at centre. */}
             <radialGradient id={id('hub')} cx="38%" cy="30%" r="72%">
               <stop offset="0" stopColor="#e8f4fc" />
               <stop offset="0.45" stopColor="#8fa9ba" />
-              <stop offset="1" stopColor="#2a3945" />
+              <stop offset="1" stopColor="#233648" />
             </radialGradient>
             <radialGradient id={id('dial-face')} cx="40%" cy="32%" r="75%">
               <stop offset="0" stopColor="#5e7482" />
-              <stop offset="0.5" stopColor="#35454f" />
-              <stop offset="1" stopColor="#18232b" />
+              <stop offset="0.5" stopColor="#2e4250" />
+              <stop offset="1" stopColor="#122130" />
             </radialGradient>
             {/* Clips the sweeps to the door face so they never spill. */}
             <clipPath id={id('door-clip')}>
@@ -195,10 +218,10 @@ export const SafeGraphic = ({
             </filter>
           </defs>
 
-          <path d="M48 20h224l28 28v224l-28 28H48l-28-28V48z" fill="#05090c" stroke="#33454f" strokeWidth="4" />
+          <path d="M48 20h224l28 28v224l-28 28H48l-28-28V48z" fill="#040b12" stroke="#2d4353" strokeWidth="4" />
           <path d="M54 29h212l24 24v212l-24 24H54l-24-24V53z" fill={url('frame-metal')} stroke={stateColor} strokeOpacity=".45" strokeWidth="2" />
           {/* Bevelled inner lip of the frame opening. */}
-          <path d="M67 46h186l20 20v188l-20 20H67l-20-20V66z" fill="#0a1116" stroke={url('bevel-inv')} strokeWidth="2.5" />
+          <path d="M67 46h186l20 20v188l-20 20H67l-20-20V66z" fill="#06101c" stroke={url('bevel-inv')} strokeWidth="2.5" />
           <path d="M71 50h178l17 17v182l-17 17H71l-17-17V67z" fill="none" stroke="#000" strokeOpacity=".55" strokeWidth="2" />
 
           {insured && (
@@ -225,6 +248,16 @@ export const SafeGraphic = ({
               <path d={`M${bolt.x - 3} ${bolt.y}h6`} stroke="#070d12" strokeWidth="2" />
             </g>
           ))}
+
+          {/* Breach reads through material, not a drawn crack: the door
+              has sprung, so the shadowed interior shows along its hinge
+              side and the door's own edge falls into shadow. */}
+          {breached && (
+            <g aria-hidden="true">
+              <path d="M67 46h186l20 20v188l-20 20H67l-20-20V66z" fill="#02070d" />
+              <rect x="47" y="46" width="120" height="248" fill={url('breach-gap')} />
+            </g>
+          )}
 
           <motion.g
             className="tactical-vault__door"
@@ -267,6 +300,9 @@ export const SafeGraphic = ({
                   takes the colour instead of only its outline. */}
               <circle cx="160" cy="160" r="96" fill={url('door-tint')} />
               <circle cx="160" cy="160" r="96" fill={url('door-vignette')} />
+              {breached && (
+                <path d="M160 64a96 96 0 0 0 0 192 78 96 0 0 1 0-192z" fill="#02070d" fillOpacity=".72" />
+              )}
             </g>
 
             <path
@@ -285,7 +321,7 @@ export const SafeGraphic = ({
 
             {/* Inner recess the dial sits in: outer bevel, dark well,
                 and an occlusion ring where it meets the face. */}
-            <circle cx="160" cy="160" r="64" fill="#141f27" stroke={url('bevel')} strokeWidth="7" />
+            <circle cx="160" cy="160" r="64" fill="#0f1e2c" stroke={url('bevel')} strokeWidth="7" />
             <circle cx="160" cy="160" r="60" fill="none" stroke="#060b0f" strokeOpacity=".8" strokeWidth="3" />
             <circle cx="160" cy="160" r="57" fill="none" stroke={url('bevel-inv')} strokeWidth="2" strokeOpacity=".8" />
 
@@ -295,17 +331,21 @@ export const SafeGraphic = ({
                 all six at 12 o'clock. */}
             {[0, 60, 120, 180, 240, 300].map((angle) => (
               <g key={angle} transform={`rotate(${angle} 160 160)`}>
-                <motion.rect
-                  x="153"
-                  y="52"
-                  width="14"
-                  height="36"
-                  rx="3"
-                  fill={url('bevel')}
-                  stroke="#070d11"
-                  strokeWidth="1.2"
-                  animate={breached && !reduceMotion ? { y: -16 } : undefined}
-                />
+                <motion.g animate={breached && !reduceMotion ? { y: -16 } : undefined}>
+                  {/* Cylindrical barrel: shading runs ACROSS the bolt
+                      (dark edge → highlight → dark edge), which is what
+                      separates a cylinder from a flat pill. */}
+                  <rect x="153" y="55" width="14" height="33" rx="1.5" fill={url('bolt-barrel')} />
+                  {/* Machined seams along the barrel. */}
+                  <line x1="155.4" y1="57" x2="155.4" y2="87" stroke="#050d16" strokeOpacity=".75" strokeWidth="0.9" />
+                  {/* Collar where the bolt enters the door. */}
+                  <rect x="151.6" y="72" width="16.8" height="3.4" rx="1" fill={url('bolt-cap')} />
+                  {/* Outer end cap, brighter with its own rim. */}
+                  <rect x="151.4" y="50" width="17.2" height="7.5" rx="2.4" fill={url('bolt-cap')} stroke="#050d16" strokeWidth="0.7" />
+                  <line x1="153.6" y1="52.2" x2="166.4" y2="52.2" stroke="#eaf6ff" strokeOpacity=".6" strokeWidth="1.1" strokeLinecap="round" />
+                  {/* Contact shadow where it seats into the face. */}
+                  <rect x="152.6" y="86.4" width="14.8" height="2.6" rx="1" fill="#040a12" fillOpacity=".85" />
+                </motion.g>
               </g>
             ))}
 
@@ -315,7 +355,7 @@ export const SafeGraphic = ({
               transition={{ duration: state === 'attacking' ? 1.2 : 3, repeat: state === 'attacking' ? Infinity : 0, ease: 'linear' }}
             >
               {/* Dial bezel: thick bevel ring, then the engraved face. */}
-              <circle cx="160" cy="160" r="50" fill="#0b141a" stroke={url('bevel')} strokeWidth="5" />
+              <circle cx="160" cy="160" r="50" fill="#08141f" stroke={url('bevel')} strokeWidth="5" />
               <circle cx="160" cy="160" r="47" fill="none" stroke={stateColor} strokeOpacity=".55" strokeWidth="2" />
               <circle cx="160" cy="160" r="44" fill={url('dial-face')} />
               <g clipPath={`url(#${id('dial-clip')})`}>
@@ -356,7 +396,7 @@ export const SafeGraphic = ({
             </motion.g>
 
             {/* Polished hub: bevelled collar, conical sweep, rim glint. */}
-            <circle cx="160" cy="160" r="19" fill="#131e26" stroke={url('bevel')} strokeWidth="3" />
+            <circle cx="160" cy="160" r="19" fill="#101e2d" stroke={url('bevel')} strokeWidth="3" />
             <circle cx="160" cy="160" r="14" fill={url('hub')} stroke="#070d12" strokeWidth="0.8" />
             <path d="M149 152a14 14 0 0 1 19-4" fill="none" stroke="#eaf6ff" strokeOpacity=".55" strokeWidth="1.4" strokeLinecap="round" />
             <circle cx="160" cy="160" r="10" fill={stateColor} filter={`url(#${id('state-glow')})`} />
@@ -372,7 +412,7 @@ export const SafeGraphic = ({
               transition={{ duration: 2, repeat: Infinity }}
             />
           )}
-          {breached && <path d="M211 57l-17 39 21 20-24 37 18 25" fill="none" stroke="#fff" strokeWidth="3" />}
+
         </svg>
 
         {state === 'exposed' && <AlertTriangle className="tactical-vault__state-mark" aria-hidden="true" />}
