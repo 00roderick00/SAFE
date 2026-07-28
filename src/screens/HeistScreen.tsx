@@ -28,6 +28,7 @@ import { useHeistStore } from '../store/heistStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useUnlockTier } from '../store/useUnlockTier';
 import { InfoTip } from '../components/InfoTip';
+import { api } from '../services/api';
 import { STAT_HELP } from '../game/statHelp';
 import type { BotSafe } from '../types';
 import { haptics } from '../utils/haptics';
@@ -36,6 +37,14 @@ type SortMode = 'net-desc' | 'stake-asc' | 'stake-desc' | 'difficulty-asc';
 type FamiliarityFilter = 'all' | 'familiar' | 'unfamiliar';
 
 const difficultyRank = { soft: 1, tricky: 2, brutal: 3 } as const;
+/** "42m" / "3m" / "40s" — remaining cooldown in the shortest useful unit. */
+const formatCooldown = (ms: number): string => {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  if (seconds >= 3600) return `${Math.ceil(seconds / 3600)}h`;
+  if (seconds >= 60) return `${Math.ceil(seconds / 60)}m`;
+  return `${seconds}s`;
+};
+
 const difficultyCopy = { soft: 'Soft perimeter', tricky: 'Tricky system', brutal: 'Brutal defense' } as const;
 const formatTokens = (value: number) => `${Math.round(value).toLocaleString()} TK`;
 const formatDuration = (seconds: number) => seconds < 60 ? `~${seconds}s` : `~${Math.ceil(seconds / 60)} min`;
@@ -48,6 +57,14 @@ export const HeistScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('net-desc');
   const unlockTier = useUnlockTier();
+  // Direct challenge: find a specific player by handle. Results replace
+  // the browse list so the existing confirm-and-attack flow is reused
+  // verbatim — the searched id is the same opaque safe id list_targets
+  // returns, so it round-trips into start_attack unchanged.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<BotSafe[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const firstHeist = unlockTier === 0;
   const [familiarityFilter, setFamiliarityFilter] = useState<FamiliarityFilter>('all');
   const [maxDifficulty, setMaxDifficulty] = useState<'all' | 'soft' | 'tricky' | 'brutal'>('all');
@@ -110,6 +127,50 @@ export const HeistScreen = () => {
     }
   };
 
+  const runSearch = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchError('Enter at least 2 characters.');
+      return;
+    }
+    setSearching(true);
+    setSearchError(null);
+    try {
+      const found = await api.searchTargets(q);
+      setSearchResults(found.map((t) => ({
+        id: t.id,
+        ownerName: t.handle,
+        safeBalance: t.balance,
+        securityScore: t.securityScore,
+        securityLoadout: t.securityLoadout,
+        difficultyBand: t.difficultyBand,
+        lootRange: t.lootRange,
+        attackFee: t.attackFee,
+        lastAttackedAt: t.lastAttackedAt ? new Date(t.lastAttackedAt).getTime() : null,
+        // A cooling-down player is SHOWN with time remaining rather than
+        // hidden — "recovering, free in 42m" beats "not found".
+        attackCooldownUntil: t.cooldownRemainingMs ? Date.now() + t.cooldownRemainingMs : null,
+        tagline: 'Live target',
+        isBotTarget: false,
+        unattackableReason: t.unattackableReason,
+      })));
+      if (found.length === 0) setSearchError(`No vault found for “${q}”.`);
+    } catch (err) {
+      setSearchError(err instanceof Error && /rate_limited/.test(err.message)
+        ? 'Too many searches — try again in a minute.'
+        : 'Search failed. Try again.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchResults(null);
+    setSearchError(null);
+    setSearchQuery('');
+  };
+
   const targets = useMemo(() => {
     const filtered = botSafes.filter((target) => {
       const familiarity = getFamiliarity(target.securityLoadout.modules, familiarTypes);
@@ -132,6 +193,8 @@ export const HeistScreen = () => {
     });
   }, [botSafes, familiarTypes, familiarityFilter, maxDifficulty, sortMode, firstHeist]);
 
+  const visibleTargets = searchResults ?? targets;
+
   const handleStartExposure = () => {
     haptics.heavy();
     enterHeistMode();
@@ -139,6 +202,9 @@ export const HeistScreen = () => {
 
   const handleSelectTarget = (target: BotSafe) => {
     if (target.attackFee > safeBalance || (target.attackCooldownUntil ?? 0) > now) return;
+    // A safe with no server-verifiable lock is force-lost by the
+    // composition rule, so it must never be offered as attackable.
+    if (target.unattackableReason) return;
     haptics.medium();
     setSelectedTarget(target);
   };
@@ -212,6 +278,32 @@ export const HeistScreen = () => {
         </StateFrame>
       )}
 
+      <form className="target-search" onSubmit={runSearch} role="search">
+        <label htmlFor="target-search-input">Find a player</label>
+        <div>
+          <input
+            id="target-search-input"
+            type="search"
+            value={searchQuery}
+            placeholder="Vault handle…"
+            autoComplete="off"
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+          <button type="submit" className="btn-secondary" disabled={searching}>
+            {searching ? 'Searching…' : 'Search'}
+          </button>
+          {searchResults && (
+            <button type="button" className="text-button" onClick={clearSearch}>Clear</button>
+          )}
+        </div>
+        {searchError && <p className="target-search__error" role="status">{searchError}</p>}
+        {searchResults && !searchError && (
+          <p className="target-search__count" role="status">
+            {searchResults.length} vault{searchResults.length === 1 ? '' : 's'} found
+          </p>
+        )}
+      </form>
+
       <section className="target-controls" aria-label="Sort and filter targets">
         <label><ArrowDownUp size={15} /><span>Sort</span><select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}><option value="net-desc">Net payout</option><option value="stake-asc">Stake: low first</option><option value="stake-desc">Stake: high first</option><option value="difficulty-asc">Difficulty</option></select></label>
         <label><Filter size={15} /><span>Games</span><select value={familiarityFilter} onChange={(event) => setFamiliarityFilter(event.target.value as FamiliarityFilter)}><option value="all">All games</option><option value="familiar">All familiar</option><option value="unfamiliar">Has unfamiliar</option></select></label>
@@ -227,9 +319,9 @@ export const HeistScreen = () => {
       </p>
 
       <section className={`dossier-list ${refreshing ? 'dossier-list--scanning' : ''}`} aria-label="Available targets" aria-busy={refreshing}>
-        {targets.length === 0 ? (
+        {visibleTargets.length === 0 ? (
           <div className="honest-empty target-empty"><ScanLine size={28} /><div><strong>No matching dossiers</strong><span>Adjust filters or scan for a new target set.</span></div><button className="btn-secondary" onClick={handleRefresh}>Scan again</button></div>
-        ) : targets.map((target, index) => {
+        ) : visibleTargets.map((target, index) => {
           const payout = getPayoutPresentation(target.safeBalance);
           const familiarity = getFamiliarity(target.securityLoadout.modules, familiarTypes);
           const availability = getTargetAvailability(target.attackFee, safeBalance, target.attackCooldownUntil, now);
@@ -242,7 +334,7 @@ export const HeistScreen = () => {
               type="button"
               className={`dossier-card difficulty-${target.difficultyBand} ${selectedTarget?.id === target.id ? 'dossier-card--selected' : ''}`}
               onClick={() => handleSelectTarget(target)}
-              disabled={!availability.selectable}
+              disabled={!availability.selectable || Boolean(target.unattackableReason)}
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(index * .025, .2) }}
@@ -271,7 +363,16 @@ export const HeistScreen = () => {
                 <span><LockKeyhole size={14} /> {target.securityLoadout.modules.length} locks</span>
                 <span>{familiarity.unfamiliar === 0 ? 'Familiar set' : `${familiarity.unfamiliar} unfamiliar`}</span>
                 {!affordable && <StateBadge state="failed" label="Cannot afford" compact />}
-                {cooldown && <StateBadge state="warning" label="Cooldown" compact />}
+                {cooldown && (
+                  <StateBadge
+                    state="warning"
+                    label={`Recovering — free in ${formatCooldown((target.attackCooldownUntil ?? 0) - now)}`}
+                    compact
+                  />
+                )}
+                {target.unattackableReason === 'no_verifiable_lock' && (
+                  <StateBadge state="failed" label="No defence to beat — can't be raided" compact />
+                )}
                 {!cooldown && recent && <StateBadge state="warning" label="Recently attacked" compact />}
               </div>
             </motion.button>

@@ -134,6 +134,10 @@ export interface BotSafe {
   tagline?: string;
   /** Presentation-only provenance from list_targets; economy treats ids as opaque. */
   isBotTarget?: boolean;
+  /** Set on searched targets whose safe has no server-verifiable lock:
+   *  the composition rule would force any attack to a loss, so the card
+   *  is shown but not attackable. Presentation only. */
+  unattackableReason?: 'no_verifiable_lock';
 }
 
 export interface AttackResult {

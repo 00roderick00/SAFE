@@ -52,7 +52,19 @@ export const ECONOMY = {
   },
 
   // Anti-abuse
-  samTargetCooldown: 60 * 60, // 1 hour cooldown for same target
+  //
+  // BALANCE KNOB, NOT A SECURITY CONTROL. This exists so one player
+  // can't be farmed into the ground by a single attacker camping their
+  // vault — it shapes fairness and pacing, nothing more. Nothing about
+  // the forgery guarantee or the composition rule depends on it.
+  //
+  // Held at 5 minutes for playtesting: at the previous 1 hour, two
+  // friends could attack each other exactly once and were then locked
+  // out for the rest of the session, which made the game untestable in
+  // pairs. RAISE THIS as the player base grows — with a large roster
+  // there are always other targets, so a longer cooldown costs nobody
+  // anything and does more to stop farming.
+  samTargetCooldown: 5 * 60, // 5 minutes between attacks on the same target
   maxAttacksPerTarget: 3, // per day
   diminishingReturnsThreshold: 3, // rewards decrease after this many attacks on same target
 

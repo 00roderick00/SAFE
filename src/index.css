@@ -2339,3 +2339,24 @@ input:focus-visible,
 /* Flip below the trigger when it sits near the top of the screen and
    the panel would otherwise be clipped off-viewport. */
 .info-tip .info-tip__panel--below { bottom: auto; top: calc(100% + 8px); }
+
+/* Direct-challenge search on the heist screen. */
+.target-search { display: flex; flex-direction: column; gap: 6px; padding: 0 2px; }
+.target-search > label {
+  color: var(--color-text-dim);
+  font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+}
+.target-search > div { display: flex; align-items: center; gap: 8px; }
+.target-search input {
+  flex: 1; min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: #0b0f14;
+  font-size: 13px;
+}
+.target-search input:focus-visible { outline: 2px solid var(--safe-warning); outline-offset: 1px; }
+.target-search button[type='submit'] { flex: 0 0 auto; padding: 9px 14px; }
+.target-search__error { margin: 0; color: var(--safe-warning); font-size: 12px; }
+.target-search__count { margin: 0; color: var(--color-text-dim); font-size: 12px; }

@@ -94,6 +94,12 @@ export interface TargetCard {
   isBot: boolean;
   tagline: string | null;
   lastAttackedAt: string | null;
+  /** Present on searched targets that are still cooling down — shown
+   *  with time remaining instead of being hidden. */
+  cooldownRemainingMs?: number;
+  /** Present when the safe has no server-verifiable lock, so the
+   *  composition rule would force any attack on it to a loss. */
+  unattackableReason?: 'no_verifiable_lock';
 }
 
 export interface Profile {
@@ -198,6 +204,18 @@ export const api = {
    * verbatim to `startAttack` so the target actually attacked
    * matches the one displayed.
    */
+  /**
+   * Find a specific player by handle. Goes through the search_targets
+   * Edge Function (service client, rate-limited) — the browser never
+   * queries `profiles` directly. Returns the same TargetCard shape as
+   * fetchTargetList, so a searched target flows into the existing
+   * confirm-and-attack path unchanged.
+   */
+  async searchTargets(query: string): Promise<TargetCard[]> {
+    const res = await callFunction<{ targets: TargetCard[] }>('search_targets', { query });
+    return res.targets ?? [];
+  },
+
   async fetchTargetList(count = 15): Promise<TargetCard[]> {
     const res = await callFunction<{ targets: TargetCard[] }>('list_targets', { count });
     return res.targets ?? [];

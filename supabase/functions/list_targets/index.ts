@@ -25,6 +25,7 @@ import {
 } from '../_shared/economy.ts';
 import { ECONOMY } from '../_shared/constants.ts';
 import { generateBotTarget, newBotId, parseBotId } from '../_shared/bot-target.ts';
+import { countVerifiableModules } from '../_shared/lock-solutions.ts';
 import type { SecurityLoadout } from '../_shared/types.ts';
 
 interface TargetCard {
@@ -62,14 +63,31 @@ serve(async (req) => {
 
   // Real safes: everyone else with a positive balance, not on cooldown.
   const cooldownCutoff = new Date(Date.now() - ECONOMY.samTargetCooldown * 1000).toISOString();
+  // Over-fetch, because the verifiable-lock filter below can drop rows
+  // and we still want a full list.
   const { data: real, error: realErr } = await supabase
     .from('public_safe_snapshots')
     .select('id, owner_id, balance, security_loadout, handle, last_attacked_at, updated_at')
     .neq('owner_id', userId)
     .or(`last_attacked_at.is.null,last_attacked_at.lt.${cooldownCutoff}`)
     .order('updated_at', { ascending: false })
-    .limit(count);
+    .limit(Math.min(90, count * 3));
   if (realErr) return errorResponse('list_real_failed', 500, { detail: realErr.message });
+
+  // INVARIANT: never list a safe that cannot be breached.
+  //
+  // A safe with no server-verifiable lock is forced to a LOSS by the
+  // composition rule in submit_result, so listing it would advertise an
+  // unwinnable target that silently eats the attacker's stake. Safes are
+  // now created with a starter defence (migration
+  // 20260728120000_default_loadout_no_lockless_safes), so this should
+  // never fire for a real player — it is the belt-and-braces half of the
+  // fix, and also covers a player who deliberately equips three
+  // class-2-only locks (the Security screen warns them about exactly
+  // this). Bots always carry a verifiable lock by construction.
+  const listable = (real ?? []).filter(
+    (row) => countVerifiableModules(row.security_loadout as SecurityLoadout) > 0,
+  );
 
   // Attacker balance for fee capping.
   const { data: attackerSafe } = await supabase
@@ -79,7 +97,7 @@ serve(async (req) => {
     .maybeSingle();
   const attackerBalance = attackerSafe?.balance;
 
-  const realCards: TargetCard[] = (real ?? []).map((row) => {
+  const realCards: TargetCard[] = listable.slice(0, count).map((row) => {
     const loadout = row.security_loadout as SecurityLoadout;
     const score = calculateSecurityScore(loadout);
     return {
