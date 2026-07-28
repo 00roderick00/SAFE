@@ -20,6 +20,8 @@ import { GameEmblem, GameIcon, StateBadge, StateFrame } from '../components/game
 import { MiniGameHost } from '../components/minigames';
 import { getCatalogMeta, getDefenseMix } from '../game/catalog';
 import { requirementFor } from '../game/progression';
+import { InfoTip } from '../components/InfoTip';
+import { STAT_HELP } from '../game/statHelp';
 import { useSurfaceUnlocked } from '../store/useUnlockTier';
 import { calculateEconomyStats } from '../game/economy';
 import { isVerifiableModule } from '../game/lockSolutions';
@@ -103,8 +105,8 @@ export const SecurityScreen = () => {
 
       <main>
         <section className="defense-summary">
-          <div className="defense-summary__score"><Shield size={30} /><span>SECURITY STRENGTH</span><strong>{Math.round(stats.securityScore)}</strong><small>{stats.securityScore >= 65 ? 'Hardened' : stats.securityScore >= 35 ? 'Operational' : 'Vulnerable'}</small></div>
-          <div className="defense-summary__intel"><span>Potential breach loss <b>{Math.round(stats.potentialLoot).toLocaleString()} TK</b></span><span>Insurance <b>{insured ? 'Active' : 'Not active'}</b></span><span>Skill coverage <b>{mix.covered.length} / 5</b></span></div>
+          <div className="defense-summary__score"><Shield size={30} /><span>SECURITY STRENGTH<InfoTip label={STAT_HELP.securityStrength.title} body={STAT_HELP.securityStrength.body} align="start" /></span><strong>{Math.round(stats.securityScore)}</strong><small>{stats.securityScore >= 65 ? 'Hardened' : stats.securityScore >= 35 ? 'Operational' : 'Vulnerable'}</small></div>
+          <div className="defense-summary__intel"><span>Potential breach loss <b>{Math.round(stats.potentialLoot).toLocaleString()} TK</b><InfoTip label={STAT_HELP.potentialBreachLoss.title} body={STAT_HELP.potentialBreachLoss.body} align="end" /></span><span>Insurance <b>{insured ? 'Active' : 'Not active'}</b><InfoTip label={STAT_HELP.insurance.title} body={STAT_HELP.insurance.body} align="end" /></span><span>Skill coverage <b>{mix.covered.length} / 5</b><InfoTip label={STAT_HELP.skillCoverage.title} body={STAT_HELP.skillCoverage.body} align="end" /></span></div>
         </section>
 
         {verifiableCount === 0 && (

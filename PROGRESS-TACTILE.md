@@ -446,3 +446,71 @@ fully opaque, buttons unobstructed.
   dismissible; each surface explains itself rather than showing generic
   copy; unlocked items stay ordinary links with no sheet.
 - Suite **464 passing** (was 424), build + lint green.
+
+## 10. Follow-up 4 (2026-07-28): explanatory help on the stat readouts
+
+### 10.1 One reusable, tap-first component
+
+`src/components/InfoTip.tsx` — a small ⓘ affordance next to a stat that
+**reveals on tap**. Hover and focus also open it, but only as extras for
+desktop and keyboard: this is a phone game, and a `title` tooltip is
+invisible there. Dismisses on tap-outside, Escape, or a second tap.
+
+Details worth knowing:
+- Hover is guarded on `pointerType === 'mouse'`, so a touch tap can't
+  fire a synthetic hover that fights the click handler.
+- Click **pins, then closes** rather than plain-toggling — on desktop
+  the panel is often already open from hover, and a plain toggle made
+  clicking it close (caught by a test, fixed).
+- The panel is rendered only while open. A `hidden` panel still counts
+  toward `textContent`, which broke an existing QA assertion reading a
+  row as "label + value" — and would mislead anything else parsing
+  screen text.
+- It flips below the trigger near the top of the screen, and each call
+  site anchors start/end so the panel never leaves the app frame
+  (verified by measuring rects in a real browser).
+- Accessibility: a real `<button>` with `aria-expanded`/`aria-controls`,
+  labelled "What is X?", revealing a `role="note"` labelled "X
+  explained".
+
+### 10.2 Copy derived from the formulas, not written by hand
+
+`src/game/statHelp.ts` interpolates every number **from `ECONOMY`**
+(`lootFraction`, `lootCap`, `platformCut`, `principalFloor`,
+`insurance.coverage`, `maxSecurityScore`), so the help cannot drift from
+`_shared/economy.ts`. `statHelp.test.ts` re-derives each figure from the
+constants *and* the functions (`calculateLoot`,
+`calculateLootDistribution`) and asserts the copy quotes them — plus
+that entries stay ≤ 2 sentences and that the actionable stats say how to
+improve.
+
+Covered: Safe screen (Balance, Potential loss, Security, Insurance),
+Security screen (Security strength, Potential breach loss, Insurance,
+Skill coverage), and the heist economy (Stake, Gross loot, Platform cut,
+Net win). The dossier card is itself a `<button>`, so its two figures
+are explained by a legend above the list rather than by nested buttons
+(invalid HTML); the full breakdown is explained in the attack
+confirmation sheet where those four terms actually appear.
+
+### 10.3 Also removed the remaining hover-only help
+
+The bottom-nav locked items were **already** tap-to-reveal (§9.1), so
+they needed no change. But the same defect survived in four other
+places, all now using `InfoTip` and no longer relying on `title`:
+the locked "Build your own game" and "Browse all" buttons in the game
+picker, the locked Insurance quick action on the Safe screen, and the
+achievement descriptions on the Profile screen. There are now **no
+`title` tooltips left** carrying meaning anywhere in the app.
+
+### 10.4 Tests
+
+`InfoTip.test.tsx` (12) — reveals on tap; touch hover is ignored; a
+stray pointer-leave can't close a tapped panel; dismissal via
+outside-tap/Escape/second tap; hover and focus work for desktop;
+`aria-expanded`/`aria-controls` wiring; asserts **no `title` attribute**
+and that help opens with no `pointerenter` ever firing.
+`statHelp.integration.test.tsx` (12) — every explained box on all three
+screens reveals its exact copy on tap, nothing is revealed before the
+tap, and no explanation is duplicated into a `title`.
+
+Suite **497 passing** (was 464), build + lint green.

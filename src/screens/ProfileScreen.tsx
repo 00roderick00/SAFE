@@ -17,6 +17,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
+import { InfoTip } from '../components/InfoTip';
 import { useSocialStore, AVAILABLE_ACHIEVEMENTS } from '../store/socialStore';
 import { calculateSecurityScore } from '../game/economy';
 
@@ -247,11 +248,11 @@ export const ProfileScreen = () => {
                       ? 'bg-primary/20 border border-primary/30'
                       : 'bg-surface-light opacity-50'
                   }`}
-                  title={achievement.description}
-                  aria-label={`${achievement.name}: ${unlocked ? 'unlocked' : 'locked'}. ${achievement.description}`}
+                  aria-label={`${achievement.name}: ${unlocked ? 'unlocked' : 'locked'}.`}
                 >
                   <span className="mb-1" aria-hidden="true">{unlocked ? <AchievementIcon size={23} /> : <Lock size={23} />}</span>
                   <span className="text-[10px] text-text-dim leading-tight">{achievement.name}</span>
+                  <InfoTip label={achievement.name} body={achievement.description} />
                 </div>
               );
             })}

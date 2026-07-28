@@ -26,6 +26,8 @@ import { api } from '../services/api';
 import { useSession } from '../services/useSession';
 import { useGameStore } from '../store/gameStore';
 import { usePlayerStore } from '../store/playerStore';
+import { InfoTip } from '../components/InfoTip';
+import { STAT_HELP } from '../game/statHelp';
 import { useSurfaceUnlocked } from '../store/useUnlockTier';
 import { requirementFor } from '../game/progression';
 import { haptics } from '../utils/haptics';
@@ -207,10 +209,10 @@ export const HomeScreen = () => {
         </motion.div>
 
         <section className="vault-metrics" aria-label="Vault status details">
-          <div><span>Balance</span><strong>{formatTokens(safeBalance)}</strong></div>
-          <div><span>Potential loss</span><strong className="text-warning">{formatTokens(stats.potentialLoot)}</strong></div>
-          <div><span>Security</span><strong>{securityLabel} · {Math.round(stats.securityScore)}</strong></div>
-          <div><span>Insurance</span><strong>{insured ? 'Active' : 'Not active'}</strong></div>
+          <div><span>Balance<InfoTip label={STAT_HELP.balance.title} body={STAT_HELP.balance.body} align="start" /></span><strong>{formatTokens(safeBalance)}</strong></div>
+          <div><span>Potential loss<InfoTip label={STAT_HELP.potentialLoss.title} body={STAT_HELP.potentialLoss.body} align="end" /></span><strong className="text-warning">{formatTokens(stats.potentialLoot)}</strong></div>
+          <div><span>Security<InfoTip label={STAT_HELP.security.title} body={STAT_HELP.security.body} align="start" /></span><strong>{securityLabel} · {Math.round(stats.securityScore)}</strong></div>
+          <div><span>Insurance<InfoTip label={STAT_HELP.insurance.title} body={STAT_HELP.insurance.body} align="end" /></span><strong>{insured ? 'Active' : 'Not active'}</strong></div>
         </section>
 
         <StateFrame state={stats.securityScore < 35 ? 'warning' : 'secure'} className="next-action-panel" label="Recommended next action">
@@ -230,14 +232,16 @@ export const HomeScreen = () => {
               <ShieldCheck size={18} aria-hidden="true" /> Insurance
             </button>
           ) : (
-            <button
-              className="btn-secondary opacity-45 cursor-not-allowed"
-              aria-disabled="true"
-              title={`${requirementFor('insurance')} to unlock`}
-              aria-label={`Insurance — locked. ${requirementFor('insurance')}.`}
-            >
-              <LockIcon size={18} aria-hidden="true" /> Insurance
-            </button>
+            <span className="locked-tool">
+              <button
+                className="btn-secondary opacity-45 cursor-not-allowed"
+                aria-disabled="true"
+                aria-label={`Insurance — locked. ${requirementFor('insurance')}.`}
+              >
+                <LockIcon size={18} aria-hidden="true" /> Insurance
+              </button>
+              <InfoTip label="Insurance" body={`Locked. ${requirementFor('insurance')} to buy cover. ${STAT_HELP.insurance.body}`} align="end" />
+            </span>
           )}
         </div>
 

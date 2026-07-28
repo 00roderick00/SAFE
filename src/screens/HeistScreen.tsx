@@ -27,6 +27,8 @@ import { useGameStore } from '../store/gameStore';
 import { useHeistStore } from '../store/heistStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useUnlockTier } from '../store/useUnlockTier';
+import { InfoTip } from '../components/InfoTip';
+import { STAT_HELP } from '../game/statHelp';
 import type { BotSafe } from '../types';
 import { haptics } from '../utils/haptics';
 
@@ -216,6 +218,14 @@ export const HeistScreen = () => {
         <label><ShieldAlert size={15} /><span>Max risk</span><select value={maxDifficulty} onChange={(event) => setMaxDifficulty(event.target.value as typeof maxDifficulty)}><option value="all">Any difficulty</option><option value="soft">Soft only</option><option value="tricky">Up to tricky</option><option value="brutal">Up to brutal</option></select></label>
       </section>
 
+      {/* Legend for the two figures on every dossier card. The card is
+          itself a button, so the tips live here rather than nested
+          inside it (a button inside a button is invalid). */}
+      <p className="dossier-legend">
+        Each card shows <b>Risk</b><InfoTip label={STAT_HELP.stake.title} body={STAT_HELP.stake.body} align="start" />
+        and <b>Potential win</b><InfoTip label={STAT_HELP.netWin.title} body={STAT_HELP.netWin.body} align="start" />
+      </p>
+
       <section className={`dossier-list ${refreshing ? 'dossier-list--scanning' : ''}`} aria-label="Available targets" aria-busy={refreshing}>
         {targets.length === 0 ? (
           <div className="honest-empty target-empty"><ScanLine size={28} /><div><strong>No matching dossiers</strong><span>Adjust filters or scan for a new target set.</span></div><button className="btn-secondary" onClick={handleRefresh}>Scan again</button></div>
@@ -284,11 +294,11 @@ export const HeistScreen = () => {
                 <p className="eyebrow">FINAL ATTACK CHECK</p>
                 <h2 id="attack-confirmation-title">Attack {selectedTarget.ownerName}?</h2>
                 <div className="settlement-choice">
-                  <StateFrame state="failed" label="Loss outcome"><AlertTriangle /><span>If any lock holds</span><strong>-{formatTokens(selectedTarget.attackFee)} stake</strong></StateFrame>
+                  <StateFrame state="failed" label="Loss outcome"><AlertTriangle /><span>If any lock holds<InfoTip label={STAT_HELP.stake.title} body={STAT_HELP.stake.body} align="start" /></span><strong>-{formatTokens(selectedTarget.attackFee)} stake</strong></StateFrame>
                   <span className="settlement-choice__or">OR</span>
-                  <StateFrame state="cracked" label="Win outcome"><Crosshair /><span>If every lock cracks</span><strong>+{formatTokens(payout.netPayout)} net loot</strong></StateFrame>
+                  <StateFrame state="cracked" label="Win outcome"><Crosshair /><span>If every lock cracks<InfoTip label={STAT_HELP.netWin.title} body={STAT_HELP.netWin.body} align="end" /></span><strong>+{formatTokens(payout.netPayout)} net loot</strong></StateFrame>
                 </div>
-                <dl className="settlement-breakdown"><div><dt>Gross loot</dt><dd>{formatTokens(payout.grossLoot)}</dd></div><div><dt>Platform cut</dt><dd>-{formatTokens(payout.platformCut)}</dd></div><div><dt>Final net payout</dt><dd>{formatTokens(payout.netPayout)}</dd></div></dl>
+                <dl className="settlement-breakdown"><div><dt>Gross loot<InfoTip label={STAT_HELP.grossLoot.title} body={STAT_HELP.grossLoot.body} align="start" /></dt><dd>{formatTokens(payout.grossLoot)}</dd></div><div><dt>Platform cut<InfoTip label={STAT_HELP.platformCut.title} body={STAT_HELP.platformCut.body} align="start" /></dt><dd>-{formatTokens(payout.platformCut)}</dd></div><div><dt>Final net payout<InfoTip label={STAT_HELP.netWin.title} body={STAT_HELP.netWin.body} align="start" /></dt><dd>{formatTokens(payout.netPayout)}</dd></div></dl>
                 <p className="attack-sheet__rule"><AlertTriangle size={16} /> The stake is already committed when the attack starts. Abandoning counts as a loss.</p>
                 <div className="attack-sheet__actions"><button className="btn-secondary" onClick={() => setSelectedTarget(null)}>Cancel</button><button className="btn-danger" onClick={handleConfirmAttack}><Crosshair size={18} /> Risk {formatTokens(selectedTarget.attackFee)}</button></div>
               </motion.section>

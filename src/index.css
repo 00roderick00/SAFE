@@ -2259,3 +2259,83 @@ input:focus-visible,
   .locked-sheet,
   .unlock-announce { animation: none; }
 }
+
+/* ---- InfoTip -------------------------------------------------------
+   Tap-first stat help. Deliberately NOT a `title` tooltip: this game is
+   played on phones, where hover and native tooltips do not exist. The
+   panel is positioned, not hover-revealed — visibility is driven by the
+   `hidden` attribute the component toggles. */
+.info-tip { position: relative; display: inline-flex; vertical-align: middle; }
+
+.info-tip__trigger {
+  display: grid;
+  place-items: center;
+  /* Comfortable touch target without inflating the layout box. */
+  width: 26px; height: 26px;
+  margin: -6px 0 -6px 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--color-text-dim);
+  background: none;
+  cursor: pointer;
+  opacity: .65;
+  -webkit-tap-highlight-color: transparent;
+}
+.info-tip__trigger:hover,
+.info-tip__trigger:focus-visible { color: var(--safe-secure); opacity: 1; }
+.info-tip__trigger[aria-expanded='true'] { color: var(--safe-secure); opacity: 1; }
+.info-tip__trigger:focus-visible { outline: 2px solid var(--safe-secure); outline-offset: 1px; }
+
+/* Higher specificity than the stat-row label styles it sits inside
+   (e.g. `.vault-metrics div span { text-transform: uppercase }`), which
+   would otherwise shout the explanation in caps. */
+.info-tip .info-tip__panel {
+  position: absolute;
+  z-index: 200;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: min(74vw, 290px);
+  padding: 9px 11px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: #0b0e0b;
+  box-shadow: 0 10px 28px rgba(0,0,0,.55);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+}
+.info-tip .info-tip__panel--center { left: 50%; transform: translateX(-50%); }
+.info-tip .info-tip__panel--start { left: -8px; }
+.info-tip .info-tip__panel--end { right: -8px; }
+
+.dossier-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 -2px;
+  padding: 0 2px;
+  color: var(--color-text-dim);
+  font-size: 11px;
+  letter-spacing: .02em;
+}
+.dossier-legend b { color: var(--color-text-secondary); font-weight: 700; }
+
+/* Locked action + its tap-to-reveal reason. The reason must never live
+   in a `title`: hover does not exist on a phone. */
+.locked-tool { display: inline-flex; align-items: center; }
+
+/* Keep the InfoTip trigger on the same line as the value it explains in
+   the defense summary, whose cells stack label over value. */
+.defense-summary__intel span { position: relative; flex-flow: row wrap; align-items: center; column-gap: 2px; }
+
+.defense-summary__score > span { display: inline-flex; align-items: center; }
+
+/* Flip below the trigger when it sits near the top of the screen and
+   the panel would otherwise be clipped off-viewport. */
+.info-tip .info-tip__panel--below { bottom: auto; top: calc(100% + 8px); }

@@ -30,6 +30,7 @@ import type { ModuleType, SecurityModule } from '../types';
 import { sanitizeUserText } from '../utils/sanitize';
 import { useSurfaceUnlocked } from '../store/useUnlockTier';
 import { requirementFor } from '../game/progression';
+import { InfoTip } from '../components/InfoTip';
 
 type PickerTab = 'arcade' | 'puzzle' | 'classic' | 'community' | 'recent' | 'favorites';
 const TABS: { id: PickerTab; label: string }[] = [
@@ -205,12 +206,12 @@ export const GamePickerScreen = () => {
             {createUnlocked ? (
               <button onClick={() => navigate('/custom-games')}><Sparkles size={16} /> Build your own game</button>
             ) : (
-              <button className="opacity-45 cursor-not-allowed" aria-disabled="true" title={`${requirementFor('create')} to unlock`}><Sparkles size={16} /> Build your own game</button>
+              <span className="locked-tool"><button className="opacity-45 cursor-not-allowed" aria-disabled="true" aria-label={`Build your own game — locked. ${requirementFor('create')}.`}><Sparkles size={16} /> Build your own game</button><InfoTip label="Build your own game" body={`Locked. ${requirementFor('create')} to unlock the AI Workshop.`} align="start" /></span>
             )}
             {marketUnlocked ? (
               <button onClick={() => navigate('/marketplace')}><Store size={16} /> Browse all</button>
             ) : (
-              <button className="opacity-45 cursor-not-allowed" aria-disabled="true" title={`${requirementFor('marketplace')} to unlock`}><Store size={16} /> Browse all</button>
+              <span className="locked-tool"><button className="opacity-45 cursor-not-allowed" aria-disabled="true" aria-label={`Browse all community games — locked. ${requirementFor('marketplace')}.`}><Store size={16} /> Browse all</button><InfoTip label="Community games" body={`Locked. ${requirementFor('marketplace')} to equip locks built by other players.`} align="start" /></span>
             )}
           </div>
         )}
