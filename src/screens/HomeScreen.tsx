@@ -186,7 +186,7 @@ export const HomeScreen = () => {
           <p className="eyebrow">SAFE // VAULT 01</p>
           <h1>Command vault</h1>
         </div>
-        <button className="icon-button" onClick={() => navigate('/security')} aria-label="Open vault settings">
+        <button className="icon-button" onClick={() => navigate('/profile')} aria-label="Account and settings">
           <Settings size={21} aria-hidden="true" />
         </button>
       </header>

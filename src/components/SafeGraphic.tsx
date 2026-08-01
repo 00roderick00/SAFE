@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { AlertTriangle, ShieldCheck, Wrench } from 'lucide-react';
 import type { SecurityModule } from '../types';
 import { GameIcon } from './game';
+import { BAND_COLORS, VaultMaterialDefs, type DifficultyBand } from './vaultMaterial';
 
 // ---------------------------------------------------------------------
 // Material pass (docs/vault-reference/*.jpg)
@@ -106,105 +107,11 @@ export const SafeGraphic = ({
       >
         <svg viewBox="0 0 320 320" className="tactical-vault__svg" aria-hidden="true">
           <defs>
-            {/* Door face: cool blue-steel, lit from upper-left, falling
-                to a deep shadow bottom-right (reference frames 1–2). */}
-            <linearGradient id={id('door-metal')} x1="0.12" y1="0.02" x2="0.88" y2="1">
-              <stop offset="0" stopColor="#b3cadb" />
-              <stop offset="0.16" stopColor="#7d94a6" />
-              <stop offset="0.38" stopColor="#4a6375" />
-              <stop offset="0.66" stopColor="#243646" />
-              <stop offset="1" stopColor="#0a1622" />
-            </linearGradient>
-            {/* Vignette that darkens the rim so the face reads domed. */}
-            <radialGradient id={id('door-vignette')} cx="50%" cy="50%" r="50%">
-              <stop offset="0.7" stopColor="#000000" stopOpacity="0" />
-              <stop offset="0.92" stopColor="#000814" stopOpacity="0.22" />
-              <stop offset="1" stopColor="#000814" stopOpacity="0.5" />
-            </radialGradient>
-            {/* Bevel stroke: light on the top-left edge, dark on the
-                bottom-right, which is what makes a ring read as having
-                real thickness. Reused on every concentric ring. */}
-            <linearGradient id={id('bevel')} x1="0.15" y1="0" x2="0.85" y2="1">
-              <stop offset="0" stopColor="#cfe2ef" />
-              <stop offset="0.35" stopColor="#7d95a5" />
-              <stop offset="0.62" stopColor="#243646" />
-              <stop offset="1" stopColor="#07111e" />
-            </linearGradient>
-            {/* Inverted bevel for inner walls (light comes off the far
-                side of a recess). */}
-            <linearGradient id={id('bevel-inv')} x1="0.15" y1="0" x2="0.85" y2="1">
-              <stop offset="0" stopColor="#07111e" />
-              <stop offset="0.4" stopColor="#1b2d3e" />
-              <stop offset="0.75" stopColor="#8aa1b1" />
-              <stop offset="1" stopColor="#c4d8e6" />
-            </linearGradient>
-            {/* Broad directional specular sweep across the upper-left. */}
-            <linearGradient id={id('spec')} x1="0.05" y1="0" x2="0.75" y2="1">
-              <stop offset="0.02" stopColor="#ffffff" stopOpacity="0" />
-              <stop offset="0.16" stopColor="#f2fbff" stopOpacity="0.46" />
-              <stop offset="0.27" stopColor="#dcecf8" stopOpacity="0.16" />
-              <stop offset="0.42" stopColor="#ffffff" stopOpacity="0" />
-            </linearGradient>
-            {/* Weaker secondary sweep low-left, as in reference frame 2. */}
-            <linearGradient id={id('spec2')} x1="0" y1="1" x2="1" y2="0.2">
-              <stop offset="0" stopColor="#ffffff" stopOpacity="0" />
-              <stop offset="0.3" stopColor="#cfe4f2" stopOpacity="0.13" />
-              <stop offset="0.5" stopColor="#ffffff" stopOpacity="0" />
-            </linearGradient>
-            {/* State tint: strongest around the rim so the material
-                takes the colour rather than just outlining it. */}
-            <radialGradient id={id('door-tint')} cx="42%" cy="34%" r="72%">
-              <stop offset="0.25" stopColor={stateColor} stopOpacity="0.03" />
-              <stop offset="0.72" stopColor={stateColor} stopOpacity="0.10" />
-              <stop offset="1" stopColor={stateColor} stopOpacity="0.22" />
-            </radialGradient>
-            {/* Soft contact shadow where the door sits proud of the frame. */}
-            <radialGradient id={id('contact')} cx="50%" cy="50%" r="50%">
-              <stop offset="0.72" stopColor="#000000" stopOpacity="0.55" />
-              <stop offset="0.88" stopColor="#000000" stopOpacity="0.28" />
-              <stop offset="1" stopColor="#000000" stopOpacity="0" />
-            </radialGradient>
-            {/* Frame: same steel family, flatter and darker than the door. */}
-            <linearGradient id={id('frame-metal')} x1="0" x2="1" y1="0" y2="1">
-              <stop stopColor="#54697a" />
-              <stop offset="0.32" stopColor="#15222f" />
-              <stop offset="0.68" stopColor="#31414c" />
-              <stop offset="1" stopColor="#06101c" />
-            </linearGradient>
-            {/* Bolt barrel: across-axis cylinder shading. */}
-            <linearGradient id={id('bolt-barrel')} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#0d1b28" />
-              <stop offset="0.18" stopColor="#41586c" />
-              <stop offset="0.38" stopColor="#b9d0e2" />
-              <stop offset="0.55" stopColor="#7089a0" />
-              <stop offset="0.8" stopColor="#2a3d50" />
-              <stop offset="1" stopColor="#0a1420" />
-            </linearGradient>
-            {/* Bolt end cap / collar: brighter, same across-axis ramp. */}
-            <linearGradient id={id('bolt-cap')} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#1b2c3c" />
-              <stop offset="0.35" stopColor="#cfe2f2" />
-              <stop offset="0.62" stopColor="#8ba3b8" />
-              <stop offset="1" stopColor="#16283a" />
-            </linearGradient>
-            {/* Breach: the dark interior revealed behind the sprung door. */}
-            <linearGradient id={id('breach-gap')} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#01050a" stopOpacity="0.95" />
-              <stop offset="0.7" stopColor="#02080f" stopOpacity="0.75" />
-              <stop offset="1" stopColor="#04101c" stopOpacity="0" />
-            </linearGradient>
+            {/* Shared with TargetSafeGraphic — see vaultMaterial.tsx.
+                One definition set means a target vault and your own
+                vault can never drift into different materials. */}
+            <VaultMaterialDefs id={id} tint={stateColor} detail="full" />
 
-            {/* Polished hub cone: bright sweep converging at centre. */}
-            <radialGradient id={id('hub')} cx="38%" cy="30%" r="72%">
-              <stop offset="0" stopColor="#e8f4fc" />
-              <stop offset="0.45" stopColor="#8fa9ba" />
-              <stop offset="1" stopColor="#233648" />
-            </radialGradient>
-            <radialGradient id={id('dial-face')} cx="40%" cy="32%" r="75%">
-              <stop offset="0" stopColor="#5e7482" />
-              <stop offset="0.5" stopColor="#2e4250" />
-              <stop offset="1" stopColor="#122130" />
-            </radialGradient>
             {/* Clips the sweeps to the door face so they never spill. */}
             <clipPath id={id('door-clip')}>
               <circle cx="160" cy="160" r="96" />
@@ -445,24 +352,89 @@ export const SafeGraphic = ({
   );
 };
 
+/**
+ * Target vault: the same material as SafeGraphic, dramatically lighter.
+ *
+ * WHY NOT REUSE SafeGraphic: it is ~226 SVG nodes, and the heist list
+ * renders up to 20 cards — 4,500+ nodes of mostly invisible detail.
+ * This shares the gradient vocabulary (vaultMaterial.tsx) so the two
+ * read as the same object, but drops everything that cannot be seen at
+ * 62px: the tick ring, dial numerals, brushed hairlines and individual
+ * bolt hardware.
+ *
+ * DETAIL BY SIZE: at >= 120px (the exposure-brief hero) it adds bolts,
+ * a second bevel ring and a dial pointer. Card avatars stay minimal.
+ */
 export const TargetSafeGraphic = ({
   size = 80,
   difficulty = 'tricky',
 }: {
   size?: number;
-  difficulty?: 'soft' | 'tricky' | 'brutal';
+  difficulty?: DifficultyBand;
   ownerName?: string;
 }) => {
-  const colors = { soft: '#D8FF45', tricky: '#FFAE42', brutal: '#FF5B32' };
-  const color = colors[difficulty];
+  const color = BAND_COLORS[difficulty];
+  // Namespaced per instance: with ~20 cards on screen, shared ids would
+  // make the first card's tint win for all of them.
+  const uid = useId().replace(/:/g, '');
+  const id = (name: string) => `${name}-${uid}`;
+  const url = (name: string) => `url(#${id(name)})`;
+  const rich = size >= 120;
+
   return (
     <div className="target-vault-emblem" style={{ width: size, height: size, color }} aria-hidden="true">
       <svg viewBox="0 0 80 80" width={size} height={size}>
-        <path d="M12 7h49l12 12v48l-7 7H12L6 68V14z" fill="#111411" stroke="currentColor" strokeWidth="2" />
-        <circle cx="39" cy="40" r="20" fill="#090b09" stroke="currentColor" strokeDasharray="3 4" />
-        <circle cx="39" cy="40" r="9" fill="#202520" stroke="currentColor" />
-        <path d="M39 40V31M39 40l8 5" stroke="currentColor" strokeWidth="2" />
-        <path d="M66 30v20" stroke="currentColor" strokeWidth="4" />
+        <defs>
+          <VaultMaterialDefs id={id} tint={color} detail="compact" />
+          <clipPath id={id('face-clip')}>
+            <circle cx="40" cy="41" r="23" />
+          </clipPath>
+        </defs>
+
+        {/* Body + bevelled inner lip. */}
+        <path d="M11 6h51l13 13v49l-7 7H11L5 68V13z" fill={url('frame-metal')} stroke={url('bevel')} strokeWidth="1.6" />
+        <path d="M15 11h44l11 11v42l-4 4H15l-4-4V15z" fill="#06101c" stroke={url('bevel-inv')} strokeWidth="1" />
+
+        {/* Door: bevelled rim, steel face, sweep, then the cast. */}
+        <circle cx="40" cy="41" r="25" fill={url('door-metal')} stroke={url('bevel')} strokeWidth="2.4" />
+        <circle cx="40" cy="41" r="23" fill={url('door-metal')} />
+        <g clipPath={`url(#${id('face-clip')})`}>
+          <rect x="10" y="11" width="60" height="60" fill={url('spec')} />
+          <circle cx="40" cy="41" r="23" fill={url('door-tint')} />
+          <circle cx="40" cy="41" r="23" fill={url('door-vignette')} />
+        </g>
+
+        {/* Concentric machined rings. */}
+        <circle cx="40" cy="41" r="20" fill="none" stroke={url('bevel')} strokeWidth="1.1" strokeOpacity=".9" />
+        {rich && <circle cx="40" cy="41" r="17" fill="none" stroke={url('bevel-inv')} strokeWidth="0.9" strokeOpacity=".7" />}
+
+        {/* Dial recess + polished hub. */}
+        <circle cx="40" cy="41" r="11" fill="#0f1e2c" stroke={url('bevel')} strokeWidth="2" />
+        <circle cx="40" cy="41" r="6" fill={url('hub')} stroke="#070d12" strokeWidth="0.5" />
+        {rich && <path d="M35 38a6 6 0 0 1 8-1.6" fill="none" stroke="#eaf6ff" strokeOpacity=".55" strokeWidth="0.9" strokeLinecap="round" />}
+        <circle cx="40" cy="41" r="2.4" fill={color} />
+        {rich && <path d="M40 41V33" stroke={color} strokeWidth="1.6" strokeLinecap="round" />}
+
+        {/* Upper-left rim glint — the strongest "polished" cue. */}
+        <path d="M25 32a21 21 0 0 1 13-11" fill="none" stroke="#f2fbff" strokeOpacity=".45" strokeWidth="1.1" strokeLinecap="round" />
+
+        {/* Locking bolts (hero only — invisible on a card avatar). */}
+        {rich && [0, 90, 180, 270].map((angle) => (
+          <rect
+            key={angle}
+            x="38.4"
+            y="14.5"
+            width="3.2"
+            height="7"
+            rx="0.6"
+            fill={url('bevel')}
+            transform={`rotate(${angle} 40 41)`}
+          />
+        ))}
+
+        {/* Difficulty band, tinting the metal and reading at a glance. */}
+        <circle cx="40" cy="41" r="25" fill="none" stroke={color} strokeOpacity=".55" strokeWidth="1.4" />
+        <path d="M70 33v16" stroke={color} strokeWidth="3" strokeLinecap="round" />
       </svg>
     </div>
   );

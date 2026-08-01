@@ -4,6 +4,9 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft,
   Bot,
+  LogOut,
+  PlayCircle,
+  Mail,
   Crown,
   Edit2,
   Fingerprint,
@@ -20,6 +23,10 @@ import { usePlayerStore } from '../store/playerStore';
 import { InfoTip } from '../components/InfoTip';
 import { useSocialStore, AVAILABLE_ACHIEVEMENTS } from '../store/socialStore';
 import { calculateSecurityScore } from '../game/economy';
+import { getUnlockTier, TIER_REQUIREMENTS, type UnlockTier } from '../game/progression';
+import { resetLocalState } from '../services/localState';
+import { supabase } from '../services/supabaseClient';
+import { useSession } from '../services/useSession';
 
 const AVATARS = [
   { id: 'shield', label: 'Vault guardian', Icon: Shield },
@@ -63,6 +70,40 @@ export const ProfileScreen = () => {
 
   const { achievements, checkAchievements } = useSocialStore();
   const [avatar, setAvatar] = useState(AVATARS[0].id);
+  const session = useSession();
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const completedHeists = usePlayerStore((state) => state.completedHeists);
+  const tier = getUnlockTier({ completedHeists, successfulHeists });
+  const email = session?.user?.email ?? null;
+
+  /**
+   * Sign out is LOCAL ONLY: it drops the auth token and wipes this
+   * device's persisted stores. It never deletes the account, safe,
+   * balance or history — all of that is server-side and comes back
+   * intact on the next sign-in. Clearing the stores matters as much as
+   * the token: leaving them behind lets the previous account's state
+   * leak into the next session.
+   */
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Even if the network call fails, still clear locally — leaving
+      // stale state behind is the worse outcome.
+    }
+    resetLocalState();
+    setSigningOut(false);
+    setConfirmSignOut(false);
+    navigate('/');
+  };
+
+  /** Replays the intro without signing out or touching server state. */
+  const handleRestartOnboarding = () => {
+    usePlayerStore.setState({ onboardingCompleted: false });
+    navigate('/');
+  };
 
   const securityScore = calculateSecurityScore(securityLoadout);
 
@@ -258,6 +299,76 @@ export const ProfileScreen = () => {
             })}
           </div>
         </motion.div>
+
+        {/* Account controls */}
+        <motion.section
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.25 }}
+          className="card-clean p-5 mt-6"
+          aria-label="Account"
+        >
+          <h2 className="text-sm font-semibold mb-3">Account</h2>
+
+          <dl className="text-sm">
+            <div className="flex items-center justify-between py-1.5">
+              <dt className="text-text-dim flex items-center gap-2"><Mail size={15} aria-hidden="true" /> Signed in as</dt>
+              <dd className="text-text truncate max-w-[55%] text-right">{email || username || 'Not signed in'}</dd>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <dt className="text-text-dim">Unlock tier</dt>
+              <dd className="text-text">
+                Tier {tier}
+                {tier < 3 && (
+                  <span className="text-text-dim"> · {TIER_REQUIREMENTS[(tier + 1) as Exclude<UnlockTier, 0>]}</span>
+                )}
+              </dd>
+            </div>
+          </dl>
+
+          <div className="flex flex-col gap-2 mt-4">
+            <button
+              onClick={handleRestartOnboarding}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-surface-light border border-border rounded-xl"
+            >
+              <PlayCircle size={18} className="text-primary" aria-hidden="true" />
+              <span className="text-sm">Restart onboarding</span>
+            </button>
+            <button
+              onClick={() => setConfirmSignOut(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-surface-light border border-danger/40 rounded-xl text-danger"
+            >
+              <LogOut size={18} aria-hidden="true" />
+              <span className="text-sm">Sign out</span>
+            </button>
+          </div>
+        </motion.section>
+
+        {confirmSignOut && (
+          <div
+            className="locked-sheet-backdrop"
+            role="dialog"
+            aria-label="Confirm sign out"
+            onClick={() => setConfirmSignOut(false)}
+          >
+            <div
+              className="locked-sheet w-full max-w-md m-3 mb-24 p-5 rounded-xl border border-surface-light bg-background shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p className="font-display text-base font-bold text-text mb-2">Sign out of SAFE?</p>
+              <p className="text-sm text-text-dim">
+                Your vault, balance and history stay safe on the server — nothing is deleted. But
+                signing back in needs a fresh magic link by email.
+              </p>
+              <div className="flex gap-2 mt-4">
+                <button className="btn-secondary flex-1" onClick={() => setConfirmSignOut(false)}>Stay signed in</button>
+                <button className="btn-danger flex-1" onClick={handleSignOut} disabled={signingOut}>
+                  {signingOut ? 'Signing out…' : 'Sign out'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Leaderboard link */}
         <motion.div

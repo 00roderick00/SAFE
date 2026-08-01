@@ -35,7 +35,9 @@ describe('home vault state and action QA', () => {
   it('shows honest empty history and routes a vulnerable player to defense work', () => {
     renderHome();
     expect(screen.getByRole('group', { name: /Vault secure with 1,000 tokens/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open vault settings' })).toBeInTheDocument();
+    // The gear opens account/settings (it used to be mislabelled "Open
+    // vault settings" while actually navigating to /security).
+    expect(screen.getByRole('button', { name: 'Account and settings' })).toBeInTheDocument();
     expect(screen.getByText('No performance history yet')).toBeInTheDocument();
     expect(screen.queryByText(/0\/0 passed/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Strengthen defenses/i }));
