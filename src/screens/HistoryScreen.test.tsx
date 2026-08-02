@@ -9,7 +9,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { HistoryScreen } from './HistoryScreen';
 import { useGameStore } from '../store/gameStore';
-import { buildServerAttackResult, buildServerDefenseEvent } from '../game/history';
+import { buildServerAttackResult, buildDefenseEventFromAttack } from '../game/history';
 
 beforeEach(() => {
   useGameStore.setState({ attackHistory: [], defenseHistory: [], notifications: [] });
@@ -36,10 +36,18 @@ describe('History shows server-settled fights', () => {
   });
 
   it('renders a server-resolved defense event', () => {
-    const ev = buildServerDefenseEvent(
-      { attacked: true, success: true, attackerName: 'trevor.mentis', feeEarned: 12, lootLost: 0 },
-      Date.now()
-    );
+    // Built from a REAL settled attack row (resolve_defense reports
+    // these; it no longer fabricates them).
+    const ev = buildDefenseEventFromAttack({
+      attackId: 'atk-9',
+      attackerHandle: 'trevor.mentis',
+      status: 'lost', // attacker lost → we held
+      resolvedAt: new Date().toISOString(),
+      stake: 12,
+      loot: 0,
+      lootLost: 0,
+      feeEarned: 12,
+    });
     useGameStore.setState({ defenseHistory: [ev] });
     renderHistory();
     expect(screen.getByText('Defended from trevor.mentis')).toBeInTheDocument();

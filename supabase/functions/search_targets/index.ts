@@ -54,7 +54,7 @@ interface TargetCard {
   cooldownRemainingMs?: number;
   /** Set when the safe can't be attacked at all (no server-verifiable
    *  lock — it would be force-lost by the composition rule). */
-  unattackableReason?: 'no_verifiable_lock';
+  unattackableReason?: 'no_verifiable_lock' | 'not_exposed';
 }
 
 /** Escape PostgREST `like` wildcards so a query can't widen the match. */
@@ -117,7 +117,7 @@ serve(async (req) => {
   // Exact first, then prefix — matched on handle only, never on email.
   const { data: rows, error } = await supabase
     .from('public_safe_snapshots')
-    .select('id, owner_id, balance, security_loadout, handle, last_attacked_at')
+    .select('id, owner_id, balance, security_loadout, handle, last_attacked_at, exposed_until')
     .neq('owner_id', userId)
     .ilike('handle', `${escapeLike(query)}%`)
     .limit(MAX_RESULTS);
@@ -163,6 +163,12 @@ serve(async (req) => {
     // offered as an attackable target. Surfaced (rather than hidden) so
     // searching a real player still finds them.
     if (countVerifiableModules(loadout) === 0) card.unattackableReason = 'no_verifiable_lock';
+    // Not currently raiding → not raidable. Surfaced rather than hidden
+    // so searching a real player still finds them.
+    const exposedUntil = row.exposed_until as string | null;
+    if (!exposedUntil || new Date(exposedUntil).getTime() <= now) {
+      card.unattackableReason = card.unattackableReason ?? 'not_exposed';
+    }
     return card;
   });
 

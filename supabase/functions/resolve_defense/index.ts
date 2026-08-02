@@ -1,14 +1,21 @@
 // POST /functions/v1/resolve_defense
 //
-// Server-owned inbound attack against the caller's safe. The client
-// ticks this while in heist mode; server decides if an attack fires,
-// resolves it deterministically against the loadout, applies loot +
-// insurance in the ledger, and returns the resulting DefenseEvent
-// for UI display.
+// REPORTS real attacks against the caller's safe. It does not adjudicate
+// anything and it moves no tokens.
 //
-// The client cannot manipulate outcomes: the RNG (whether an attack
-// fires + attacker skill) lives here, and all balance mutation is
-// via ledger.
+// WHAT THIS REPLACED: this endpoint used to FABRICATE attacks —
+// `Math.random() > ATTACK_FIRE_CHANCE` decided whether an imaginary
+// raider appeared, rolled a fake skill value against the loadout, and
+// then wrote real ledger entries for the invented outcome. No genuine
+// player attack ever reached it. Defence was a coin flip that minted and
+// destroyed tokens.
+//
+// Now: the only source of truth is the `attacks` table. Outcomes are
+// already settled by submit_result (server-authoritative, verified,
+// atomic) — this endpoint only tells the defender what happened and what
+// is happening. It performs NO writes at all.
+//
+// Body: { since?: string }  ISO timestamp of the client's last check.
 
 import { serve } from 'https://deno.land/std@0.203.0/http/server.ts';
 import {
@@ -18,13 +25,35 @@ import {
   jsonResponse,
   serviceClient,
 } from '../_shared/http.ts';
-import { computeLootSplit } from '../_shared/attack-flow.ts';
-import { calculateAttackFee, calculateSecurityScore } from '../_shared/economy.ts';
-import type { SecurityLoadout } from '../_shared/types.ts';
 
-// Per-tick chance an attack fires. Matches the previous client
-// behaviour (5%) — moved server-side so it cannot be forced.
-const ATTACK_FIRE_CHANCE = 0.05;
+/** Attacks resolved in this window are reported even without `since`. */
+const DEFAULT_LOOKBACK_MS = 5 * 60 * 1000;
+const MAX_ROWS = 20;
+
+interface InFlightAttack {
+  attackId: string;
+  attackerHandle: string;
+  startedAt: string;
+  /** Whole seconds since the raid began — the only progress signal
+   *  available, and cosmetic. See the note below. */
+  elapsedSeconds: number;
+  lockCount: number;
+}
+
+interface ResolvedAttack {
+  attackId: string;
+  attackerHandle: string;
+  /** 'won' = the attacker breached; from the attacker's perspective,
+   *  which is how the row is stored. */
+  status: string;
+  resolvedAt: string;
+  stake: number;
+  loot: number;
+  /** Tokens this defender lost (0 when they held). */
+  lootLost: number;
+  /** Fee earned for holding (the forfeited stake). */
+  feeEarned: number;
+}
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -34,116 +63,97 @@ serve(async (req) => {
   const userId = await getUserId(req);
   if (!userId) return errorResponse('unauthorized', 401);
 
-  // Only fire an attack sometimes.
-  if (Math.random() > ATTACK_FIRE_CHANCE) {
-    return jsonResponse({ attacked: false });
+  let body: { since?: string } = {};
+  try {
+    body = await req.json();
+  } catch {
+    // empty body ok
   }
 
   const supabase = serviceClient();
 
   const { data: safe, error: safeErr } = await supabase
     .from('safes')
-    .select('id, balance, security_loadout, owner_id')
+    .select('id, balance, exposed_until')
     .eq('owner_id', userId)
     .maybeSingle();
   if (safeErr || !safe) return errorResponse('safe_not_found', 404);
-  if (safe.balance <= 0) return jsonResponse({ attacked: false, reason: 'empty_safe' });
 
-  const loadout: SecurityLoadout = safe.security_loadout;
-  const securityScore = calculateSecurityScore(loadout);
+  const sinceMs = body.since ? new Date(body.since).getTime() : NaN;
+  const since = new Date(
+    Number.isFinite(sinceMs) ? sinceMs : Date.now() - DEFAULT_LOOKBACK_MS,
+  ).toISOString();
 
-  // Attacker rolls a single skill value; beats a lock iff skill >
-  // difficulty. All-or-nothing on locks (matches attacker-side).
-  const attackerSkill = 0.3 + Math.random() * 0.5;
-  const moduleResults = (loadout.modules ?? []).map((mod, i) => ({
-    moduleIndex: i,
-    moduleId: mod.id,
-    attackerScore: Number(
-      Math.min(1, attackerSkill / Math.max(0.01, mod.difficulty)).toFixed(3)
-    ),
-    defended: attackerSkill <= mod.difficulty,
-  }));
+  // Everything targeting THIS safe: still running, or finished since the
+  // client last looked.
+  const { data: rows, error: rowsErr } = await supabase
+    .from('attacks')
+    .select('id, attacker_id, status, stake, loot, created_at, resolved_at, loadout_snapshot')
+    .eq('defender_safe_id', safe.id)
+    .or(`status.eq.pending,resolved_at.gt.${since}`)
+    .order('created_at', { ascending: false })
+    .limit(MAX_ROWS);
+  if (rowsErr) return errorResponse('defense_query_failed', 500, { detail: rowsErr.message });
 
-  const attackerBreached =
-    moduleResults.length > 0 && moduleResults.every((r) => !r.defended);
-  const attackerName = 'ShadowBot' + Math.floor(Math.random() * 1000);
-  const feeEarned = calculateAttackFee(safe.balance, securityScore);
+  // Attacker handles (public, already shown on target cards).
+  const attackerIds = [...new Set((rows ?? []).map((r) => r.attacker_id as string))];
+  const handles = new Map<string, string>();
+  if (attackerIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, handle')
+      .in('id', attackerIds);
+    for (const p of profiles ?? []) handles.set(p.id as string, (p.handle as string) ?? 'Raider');
+  }
 
-  if (!attackerBreached) {
-    // Defender held: earn the fee.
-    await supabase.rpc('insert_ledger', {
-      p_user_id: userId,
-      p_delta: feeEarned,
-      p_reason: 'defense_fee',
-      p_ref_type: 'defense',
-      p_ref_id: null,
-    });
-    return jsonResponse({
-      attacked: true,
-      success: true,
-      attackerName,
-      moduleResults,
-      feeEarned,
-      lootLost: 0,
-      insurancePayout: 0,
-      newBalance: safe.balance + feeEarned,
+  const now = Date.now();
+  const inFlight: InFlightAttack[] = [];
+  const resolved: ResolvedAttack[] = [];
+
+  for (const row of rows ?? []) {
+    const attackerHandle = handles.get(row.attacker_id as string) ?? 'Raider';
+    if (row.status === 'pending') {
+      const startedAt = row.created_at as string;
+      inFlight.push({
+        attackId: row.id as string,
+        attackerHandle,
+        startedAt,
+        // COSMETIC ONLY. There is no per-lock progress channel:
+        // start_attack opens the row and submit_result closes it, with
+        // nothing in between. Elapsed time is honest and cannot be
+        // gamed; a client-reported "lock 2 of 3" would be an untrusted
+        // attacker telling us how scared to be, and it must never touch
+        // settlement.
+        elapsedSeconds: Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)),
+        lockCount: Array.isArray((row.loadout_snapshot as { modules?: unknown[] })?.modules)
+          ? ((row.loadout_snapshot as { modules: unknown[] }).modules.length)
+          : 0,
+      });
+      continue;
+    }
+
+    // Already settled by submit_result — reported, never re-decided.
+    const attackerWon = row.status === 'won';
+    resolved.push({
+      attackId: row.id as string,
+      attackerHandle,
+      status: row.status as string,
+      resolvedAt: (row.resolved_at as string) ?? (row.created_at as string),
+      stake: (row.stake as number) ?? 0,
+      loot: (row.loot as number) ?? 0,
+      lootLost: attackerWon ? ((row.loot as number) ?? 0) : 0,
+      feeEarned: attackerWon ? 0 : ((row.stake as number) ?? 0),
     });
   }
 
-  // Breach — compute loss + insurance.
-  const { defenderLoses } = computeLootSplit(safe.balance);
-  const cappedLoss = Math.min(defenderLoses, safe.balance);
-
-  await supabase.rpc('insert_ledger', {
-    p_user_id: userId,
-    p_delta: -cappedLoss,
-    p_reason: 'defense_loss',
-    p_ref_type: 'defense',
-    p_ref_id: null,
-  });
-
-  let insurancePayout = 0;
-  const { data: policy } = await supabase
-    .from('insurance_policies')
-    .select('*')
-    .eq('owner_id', userId)
-    .gt('expires_at', new Date().toISOString())
-    .gt('claims_remaining', 0)
-    .order('purchased_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (policy) {
-    insurancePayout = Math.min(
-      Math.round(cappedLoss * policy.coverage),
-      policy.max_payout
-    );
-    await supabase.rpc('insert_ledger', {
-      p_user_id: userId,
-      p_delta: insurancePayout,
-      p_reason: 'insurance_payout',
-      p_ref_type: 'policy',
-      p_ref_id: policy.id,
-    });
-    await supabase
-      .from('insurance_policies')
-      .update({ claims_remaining: policy.claims_remaining - 1 })
-      .eq('id', policy.id);
-  }
-
-  const { data: after } = await supabase
-    .from('safes')
-    .select('balance')
-    .eq('owner_id', userId)
-    .maybeSingle();
+  const exposedUntil = safe.exposed_until as string | null;
 
   return jsonResponse({
-    attacked: true,
-    success: false,
-    attackerName,
-    moduleResults,
-    feeEarned: 0,
-    lootLost: cappedLoss,
-    insurancePayout,
-    newBalance: after?.balance ?? safe.balance - cappedLoss + insurancePayout,
+    checkedAt: new Date(now).toISOString(),
+    exposed: Boolean(exposedUntil && new Date(exposedUntil).getTime() > now),
+    exposedUntil,
+    balance: safe.balance as number,
+    inFlight,
+    resolved,
   });
 });

@@ -65,10 +65,15 @@ serve(async (req) => {
   const cooldownCutoff = new Date(Date.now() - ECONOMY.samTargetCooldown * 1000).toISOString();
   // Over-fetch, because the verifiable-lock filter below can drop rows
   // and we still want a full list.
+  // Only REAL players who are currently exposed can be listed — you
+  // cannot raid someone who isn't raiding. Bots are unaffected and keep
+  // backfilling below, so the list never goes empty.
+  const nowIso = new Date().toISOString();
   const { data: real, error: realErr } = await supabase
     .from('public_safe_snapshots')
-    .select('id, owner_id, balance, security_loadout, handle, last_attacked_at, updated_at')
+    .select('id, owner_id, balance, security_loadout, handle, last_attacked_at, updated_at, exposed_until')
     .neq('owner_id', userId)
+    .gt('exposed_until', nowIso)
     .or(`last_attacked_at.is.null,last_attacked_at.lt.${cooldownCutoff}`)
     .order('updated_at', { ascending: false })
     .limit(Math.min(90, count * 3));

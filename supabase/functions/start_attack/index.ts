@@ -103,11 +103,26 @@ serve(async (req) => {
     // Real safe. UUID lookup.
     const { data: target, error: targetErr } = await supabase
       .from('public_safe_snapshots')
-      .select('id, owner_id, balance, security_loadout, handle, last_attacked_at')
+      .select('id, owner_id, balance, security_loadout, handle, last_attacked_at, exposed_until')
       .eq('id', requestedId)
       .maybeSingle();
     if (targetErr || !target) return errorResponse('target_not_found', 404);
     if (target.owner_id === userId) return errorResponse('cannot_attack_self', 400);
+
+    // EXPOSURE GATE — the core bargain: a player can only be raided
+    // while they are themselves raiding. Checked here, BEFORE the stake
+    // is debited (same pre-debit pattern as unsupported_module_types),
+    // so a refused attack creates no attack row and moves no tokens.
+    //
+    // This is also what makes exiting exposure meaningful: it closes the
+    // door to NEW attacks. It deliberately does not cancel raids already
+    // in flight — those rows are already created and settle normally.
+    const exposedUntil = target.exposed_until as string | null;
+    if (!exposedUntil || new Date(exposedUntil).getTime() <= Date.now()) {
+      return errorResponse('target_not_exposed', 409, {
+        handle: (target.handle as string) ?? 'Player',
+      });
+    }
 
     if (target.last_attacked_at) {
       const last = new Date(target.last_attacked_at as string).getTime();

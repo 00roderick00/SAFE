@@ -51,21 +51,42 @@ export interface SubmitResultPayload {
   modules: { moduleIndex: number; score: number; passed: boolean }[];
 }
 
+/** A raid currently running against your safe. */
+export interface InFlightAttack {
+  attackId: string;
+  attackerHandle: string;
+  startedAt: string;
+  /** Elapsed seconds. COSMETIC — see resolve_defense/index.ts. */
+  elapsedSeconds: number;
+  lockCount: number;
+}
+
+/** A raid against your safe that submit_result has already settled. */
+export interface ResolvedAttack {
+  attackId: string;
+  attackerHandle: string;
+  status: string;
+  resolvedAt: string;
+  stake: number;
+  loot: number;
+  lootLost: number;
+  feeEarned: number;
+}
+
 export interface DefenseTickPayload {
-  attacked: boolean;
-  success?: boolean;
-  attackerName?: string;
-  moduleResults?: {
-    moduleIndex: number;
-    moduleId: string;
-    attackerScore: number;
-    defended: boolean;
-  }[];
-  feeEarned?: number;
-  lootLost?: number;
-  insurancePayout?: number;
-  newBalance?: number | null;
-  reason?: string;
+  checkedAt: string;
+  exposed: boolean;
+  exposedUntil: string | null;
+  balance: number;
+  inFlight: InFlightAttack[];
+  resolved: ResolvedAttack[];
+}
+
+export interface ExposurePayload {
+  exposed: boolean;
+  exposedUntil: string | null;
+  /** Raids that keep running even though the window is closed. */
+  inFlightAttacks: number;
 }
 
 export interface SafeSnapshot {
@@ -194,8 +215,21 @@ export const api = {
     return callFunction<SubmitResultPayload>('submit_result', input);
   },
 
-  async resolveDefense(): Promise<DefenseTickPayload> {
-    return callFunction<DefenseTickPayload>('resolve_defense', {});
+  /** Report-only: never adjudicates, never moves tokens. */
+  async resolveDefense(since?: string): Promise<DefenseTickPayload> {
+    return callFunction<DefenseTickPayload>('resolve_defense', since ? { since } : {});
+  },
+
+  /**
+   * Open or close this safe's exposure window. The DURATION is derived
+   * server-side from ECONOMY.heistDuration — the client only says
+   * whether it wants to be exposed.
+   *
+   * Closing stops NEW attacks; it never cancels raids already in
+   * flight, and the response says how many are still underway.
+   */
+  async setExposure(exposed: boolean): Promise<ExposurePayload> {
+    return callFunction<ExposurePayload>('set_exposure', { exposed });
   },
 
   /**

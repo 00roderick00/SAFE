@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildServerAttackResult, buildServerDefenseEvent } from './history';
-import type { SubmitResultPayload, DefenseTickPayload } from '../services/api';
+import { buildServerAttackResult, buildDefenseEventFromAttack } from './history';
+import type { SubmitResultPayload } from '../services/api';
 
 describe('buildServerAttackResult', () => {
   const ctx = { attackId: 'atk-1', targetName: 'roderick.jones' };
@@ -46,36 +46,43 @@ describe('buildServerAttackResult', () => {
   });
 });
 
-describe('buildServerDefenseEvent', () => {
-  it('maps a repelled defense (fee earned)', () => {
-    const payload: DefenseTickPayload = {
-      attacked: true,
-      success: true,
-      attackerName: 'trevor.mentis',
-      feeEarned: 12,
-      lootLost: 0,
-      moduleResults: [{ moduleIndex: 0, moduleId: 'm0', attackerScore: 0.3, defended: true }],
-    };
-    const ev = buildServerDefenseEvent(payload, 42);
+describe('buildDefenseEventFromAttack', () => {
+  // Built from a REAL settled attack row. resolve_defense no longer
+  // fabricates raids, so there is no "attacked: false" case any more —
+  // if there is no row, there was no attack.
+  const base = {
+    attackId: 'atk-1',
+    attackerHandle: 'trevor.mentis',
+    resolvedAt: new Date(42).toISOString(),
+    stake: 12,
+    loot: 0,
+    lootLost: 0,
+    feeEarned: 12,
+  };
+
+  it('maps a repelled raid (attacker lost → defender held, keeps the stake)', () => {
+    const ev = buildDefenseEventFromAttack({ ...base, status: 'lost' });
     expect(ev.success).toBe(true);
     expect(ev.attackerName).toBe('trevor.mentis');
     expect(ev.feeEarned).toBe(12);
-    expect(ev.moduleResults).toHaveLength(1);
+    expect(ev.lootLost).toBe(0);
     expect(ev.timestamp).toBe(42);
   });
 
-  it('maps a breached defense (loot lost + insurance) with safe defaults', () => {
-    const payload: DefenseTickPayload = {
-      attacked: true,
-      success: false,
-      lootLost: 90,
-      insurancePayout: 40,
-    };
-    const ev = buildServerDefenseEvent(payload, 7);
+  it('maps a breach (attacker won → defender lost loot)', () => {
+    const ev = buildDefenseEventFromAttack(
+      { ...base, attackId: 'atk-2', status: 'won', loot: 90, lootLost: 90, feeEarned: 0 },
+      40
+    );
     expect(ev.success).toBe(false);
-    expect(ev.attackerName).toBe('Unknown raider');
     expect(ev.lootLost).toBe(90);
     expect(ev.insurancePayout).toBe(40);
-    expect(ev.moduleResults).toEqual([]);
+  });
+
+  it('uses a stable id so re-reporting cannot duplicate the row', () => {
+    const a = buildDefenseEventFromAttack({ ...base, status: 'lost' });
+    const b = buildDefenseEventFromAttack({ ...base, status: 'lost' });
+    expect(a.id).toBe('defense-atk-1');
+    expect(a.id).toBe(b.id);
   });
 });

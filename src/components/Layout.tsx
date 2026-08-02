@@ -10,6 +10,9 @@ import {
   Lock,
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
+import { useSession } from '../services/useSession';
+import { useDefenseWatch } from '../services/useDefenseWatch';
+import { UnderAttackAlert } from './UnderAttackAlert';
 import { LockedSurfaceSheet } from './LockedSurface';
 import {
   getUnlockTier,
@@ -76,6 +79,11 @@ export const Layout = ({ children }: LayoutProps) => {
   const tier = getUnlockTier({ completedHeists, successfulHeists });
   const [lockedSheet, setLockedSheet] = useState<GatedSurface | null>(null);
 
+  // Watches for REAL raids against this safe. Polls only while exposed
+  // and stops the instant the window closes.
+  const session = useSession();
+  const { inFlight } = useDefenseWatch(session ?? null);
+
   // Hide nav on attack screen
   const hideNav = location.pathname.startsWith('/attack');
 
@@ -102,6 +110,8 @@ export const Layout = ({ children }: LayoutProps) => {
           />
         )}
       </AnimatePresence>
+
+      {!hideNav && <UnderAttackAlert attacks={inFlight} />}
 
       {!hideNav && (
         <nav className="app-nav" aria-label="Primary navigation">

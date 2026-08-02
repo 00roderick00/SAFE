@@ -20,10 +20,7 @@ import { filterDataByRange } from '../components/earningsData';
 import { SafeGraphic, type VaultState } from '../components/SafeGraphic';
 import { StateBadge, StateFrame } from '../components/game';
 import { calculateEconomyStats } from '../game/economy';
-import { buildServerDefenseEvent } from '../game/history';
 import { buildBalanceHistory } from '../game/presentation';
-import { api } from '../services/api';
-import { useSession } from '../services/useSession';
 import { useGameStore } from '../store/gameStore';
 import { usePlayerStore } from '../store/playerStore';
 import { InfoTip } from '../components/InfoTip';
@@ -36,7 +33,6 @@ const formatTokens = (value: number) => `${Math.round(value).toLocaleString()} T
 
 export const HomeScreen = () => {
   const navigate = useNavigate();
-  const session = useSession();
   const [now, setNow] = useState(() => Date.now());
   const [timeRange, setTimeRange] = useState<TimeRange>('1W');
   const {
@@ -46,12 +42,8 @@ export const HomeScreen = () => {
     heistModeActive,
     heistModeExpiresAt,
     exitHeistMode,
-    addEarnings,
-    consumeInsuranceClaim,
   } = usePlayerStore();
   const {
-    simulateDefense,
-    addDefenseEvent,
     addNotification,
     refreshBotSafes,
     botSafes,
@@ -113,45 +105,9 @@ export const HomeScreen = () => {
     }
   }, [heistModeActive, heistModeExpiresAt, now, exitHeistMode, addNotification]);
 
-  useEffect(() => {
-    if (!heistModeActive) return;
-    const interval = window.setInterval(async () => {
-      if (session) {
-        try {
-          const result = await api.resolveDefense();
-          if (!result.attacked) return;
-          if (typeof result.newBalance === 'number') usePlayerStore.setState({ safeBalance: result.newBalance });
-          // Log the server-resolved defense to History (not just a
-          // transient notification). UX-FINDINGS P1.1.
-          addDefenseEvent(buildServerDefenseEvent(result, Date.now()));
-          addNotification({
-            type: result.success ? 'defense_success' : 'defense_fail',
-            title: result.success ? 'Attack repelled' : 'Vault breached',
-            message: result.success
-              ? `${result.attackerName} failed. You earned ${result.feeEarned} tokens.`
-              : `${result.attackerName} took ${result.lootLost} tokens${(result.insurancePayout ?? 0) > 0 ? `; insurance returned ${result.insurancePayout}` : ''}.`,
-          });
-        } catch (error) {
-          console.warn('[defense] server tick failed', error);
-        }
-        return;
-      }
-      const state = usePlayerStore.getState();
-      const result = simulateDefense(state.safeBalance, state.securityLoadout, state.insurancePolicy);
-      if (!result) return;
-      addDefenseEvent(result);
-      if (result.success) {
-        addEarnings(result.feeEarned);
-      } else {
-        state.recordLoss(result.lootLost);
-        if (result.insurancePayout > 0) {
-          addEarnings(result.insurancePayout);
-          consumeInsuranceClaim();
-        }
-      }
-    }, 30_000);
-    return () => window.clearInterval(interval);
-  }, [heistModeActive, session, simulateDefense, addDefenseEvent, addNotification, addEarnings, consumeInsuranceClaim]);
+  // Defence is watched by useDefenseWatch (Layout) against REAL attack
+  // rows. The old tick here fabricated raids with Math.random() and
+  // wrote ledger entries for them; it is gone.
 
   useEffect(() => {
     if (botSafes.length === 0) refreshBotSafes(usePlayerStore.getState().riskRating);

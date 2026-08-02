@@ -7,8 +7,9 @@
 // build the same AttackResult / DefenseEvent shapes the local path uses,
 // so both sides of a fight land in the persisted activity log.
 
+import type { ResolvedAttack } from '../services/api';
 import type { AttackResult, DefenseEvent } from '../types';
-import type { SubmitResultPayload, DefenseTickPayload } from '../services/api';
+import type { SubmitResultPayload } from '../services/api';
 
 export interface ServerAttackContext {
   /** Opaque id for the resolved attack (used as the history row key). */
@@ -49,22 +50,29 @@ export function buildServerAttackResult(
 }
 
 /** Build a History DefenseEvent from a server resolve_defense payload. */
-export function buildServerDefenseEvent(
-  payload: DefenseTickPayload,
-  timestamp: number
+/**
+ * Turn a settled attack against this safe into a History row.
+ *
+ * The outcome is read straight from the attack row that submit_result
+ * already decided — nothing here re-adjudicates. `success` is from the
+ * DEFENDER's point of view: the attack row stores 'won' when the
+ * attacker breached, which is a loss for us.
+ */
+export function buildDefenseEventFromAttack(
+  attack: ResolvedAttack,
+  insurancePayout = 0
 ): DefenseEvent {
+  const attackerBreached = attack.status === 'won';
   return {
-    id: `defense-${timestamp}`,
-    timestamp,
-    attackerName: payload.attackerName ?? 'Unknown raider',
-    success: Boolean(payload.success),
-    moduleResults: (payload.moduleResults ?? []).map((m) => ({
-      moduleId: m.moduleId,
-      attackerScore: m.attackerScore,
-      defended: m.defended,
-    })),
-    feeEarned: payload.feeEarned ?? 0,
-    lootLost: payload.lootLost ?? 0,
-    insurancePayout: payload.insurancePayout ?? 0,
+    // Stable id: re-reporting the same attack must not duplicate it.
+    id: `defense-${attack.attackId}`,
+    timestamp: new Date(attack.resolvedAt).getTime(),
+    attackerName: attack.attackerHandle,
+    success: !attackerBreached,
+    moduleResults: [],
+    feeEarned: attack.feeEarned,
+    lootLost: attack.lootLost,
+    insurancePayout,
   };
 }
+

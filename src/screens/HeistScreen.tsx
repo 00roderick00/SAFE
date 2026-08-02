@@ -65,6 +65,8 @@ export const HeistScreen = () => {
   const [searchResults, setSearchResults] = useState<BotSafe[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  // Raids still running after the window closes — reported honestly on exit.
+  const [exitNotice, setExitNotice] = useState<number | null>(null);
   const firstHeist = unlockTier === 0;
   const [familiarityFilter, setFamiliarityFilter] = useState<FamiliarityFilter>('all');
   const [maxDifficulty, setMaxDifficulty] = useState<'all' | 'soft' | 'tricky' | 'brutal'>('all');
@@ -198,6 +200,9 @@ export const HeistScreen = () => {
   const handleStartExposure = () => {
     haptics.heavy();
     enterHeistMode();
+    // Exposure is server-enforced: until this lands, nobody can attack
+    // this safe. The duration is decided by the server.
+    void api.setExposure(true).catch((err) => console.warn('[exposure] open failed', err));
   };
 
   const handleSelectTarget = (target: BotSafe) => {
@@ -380,11 +385,49 @@ export const HeistScreen = () => {
         })}
       </section>
 
-      <button className="exit-exposure-button" onClick={() => { exitHeistMode(); navigate('/'); }}>Exit exposure</button>
+      <button
+        className="exit-exposure-button"
+        onClick={async () => {
+          exitHeistMode();
+          try {
+            // Closing the window stops NEW raids. Raids already under
+            // way keep running and settle normally — we say so rather
+            // than implying the player is instantly safe.
+            const result = await api.setExposure(false);
+            if (result.inFlightAttacks > 0) {
+              setExitNotice(result.inFlightAttacks);
+              return;
+            }
+          } catch (err) {
+            console.warn('[exposure] close failed', err);
+          }
+          navigate('/');
+        }}
+      >
+        Exit exposure
+      </button>
 
       {/* Portaled to <body> so the fixed-position sheet is always anchored
           to the viewport — a transformed/animating ancestor would otherwise
           become its containing block and push the dialog below the fold. */}
+      {exitNotice !== null && (
+        <div className="locked-sheet-backdrop" role="dialog" aria-label="Exposure closed">
+          <div className="locked-sheet w-full max-w-md m-3 mb-24 p-5 rounded-xl border border-surface-light bg-background shadow-2xl">
+            <p className="font-display text-base font-bold text-text mb-2">Exposure closed</p>
+            <p className="text-sm text-text-dim">
+              No new raids can start against your vault. But{' '}
+              <strong className="text-warning">
+                {exitNotice} raid{exitNotice === 1 ? '' : 's'} already underway will still play out
+              </strong>{' '}
+              — once a raider has committed their stake, the contest finishes either way.
+            </p>
+            <button className="btn-neon w-full mt-4" onClick={() => { setExitNotice(null); navigate('/'); }}>
+              Understood
+            </button>
+          </div>
+        </div>
+      )}
+
       {createPortal(<AnimatePresence>
         {selectedTarget && (() => {
           const payout = getPayoutPresentation(selectedTarget.safeBalance);
