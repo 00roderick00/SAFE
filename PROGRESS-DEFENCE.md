@@ -129,6 +129,25 @@ Called the deployed functions with a real signed-in session:
   tokens moved.
 - Migration applied; `exposed_until` present on all 7 safes, all `NULL`.
 
+## Verified live (production, full round trip through the real UI)
+
+The deployed frontend on `main` doesn't carry this code yet, so this was
+run locally against the live backend with a real signed-in session:
+
+| Step | Result |
+|---|---|
+| Click "Expose for 10 minutes" | `exposed_until` written server-side to now + 10 min (`21:51:51`) |
+| While exposed | `resolve_defense` returns `{exposed: true, inFlight: [], resolved: []}` — real state, no fabrication, no token movement |
+| Click "Exit exposure" | `exposed_until` → `NULL`, returned to the vault; no notice shown, correctly, because there were 0 raids in flight |
+| After exit | **0 `resolve_defense` calls in 16 s** (fetch instrumented) — polling genuinely stops, no background drain |
+| Throughout | 0 of 7 safes exposed before and after; the account was left exactly as found |
+
+One transient `resolve_defense` non-2xx fired on the very first poll —
+a cold start on the just-deployed function. It did not recur over
+subsequent cycles, and the hook swallowed it without inventing an
+outcome, which is the behaviour `a failed poll never invents an outcome`
+asserts.
+
 ## NOT verified — needs two live accounts
 
 I deliberately did **not** exercise these against production:
