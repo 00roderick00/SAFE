@@ -148,6 +148,26 @@ subsequent cycles, and the hook swallowed it without inventing an
 outcome, which is the behaviour `a failed poll never invents an outcome`
 asserts.
 
+## The two warning surfaces, seen rendering
+
+Both were built but had never actually been looked at. Rendered with
+fixture data and inspected:
+
+- **Under-attack banner**, single raider: *"trevor.mentis is cracking
+  your vault / 14s in · 3 locks holding"*. Multiple: *"2 raiders are
+  cracking your vault / 1m 20s in · 3 locks holding · +1 more"*.
+- **Exit notice**: *"Exposure closed. No new raids can start against
+  your vault. But **2 raids already underway will still play out** —
+  once a raider has committed their stake, the contest finishes either
+  way."*
+
+`UnderAttackAlert.test.tsx` (10) now covers the component directly:
+renders nothing with no attacks, names one raider, summarises several,
+elapsed formatting either side of a minute, **never emits "lock N of
+M"** (that would mean trusting the attacker's client), announces
+`aria-live="polite"` without being a dialog or taking focus, and drops
+the pulse under reduced motion while keeping the alert.
+
 ## NOT verified — needs two live accounts
 
 I deliberately did **not** exercise these against production:
